@@ -1,0 +1,23 @@
+# dsh-poker bundle patch — the game center loader row.
+#
+# This is a profile BUNDLE patch layer (declared by package.json
+# `dsh.bundle.patch`), modeled on the shipped `@deepseek-ai/dsh-base` /
+# `@deepseek-ai/dsh-web-app` bundles: `dsh plugin --profile web add <pkg>`
+# installs the package AND appends it to the profile's `dsh.profile.bundles`,
+# so this row is composed automatically at every boot — users never edit
+# `cordis.patch.yml` by hand.
+#
+# The row is the host half of the plugin; the browser half is discovered via
+# the package's `dsh.client` declaration and served at
+# /plugins/dsh-poker/client.js. Overriding the game config from a profile is
+# still possible with an id-targeted patch in the profile's own layer.
+- insert:
+    - id: poker
+      name: 'dsh-poker'
+      config:
+        smallBlind: 5
+        bigBlind: 10
+        buyIn: 1000
+        maxSeats: 6
+        actionTimeoutMs: 30000
+        startingWallet: 10000

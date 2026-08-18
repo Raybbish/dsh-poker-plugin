@@ -1,0 +1,11 @@
+node_modules/
+dist-test/
+test-artifacts/
+*.tgz
+.env
+.env.*
+!.env.example
+.DS_Store
+npm-debug.log*
+pnpm-debug.log*
+
