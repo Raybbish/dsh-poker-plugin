@@ -96,7 +96,11 @@ export function LobbyView(): React.ReactElement {
                   React.createElement("div", { className: "hp-tmeta" }, `${t.playerCount}/${t.maxSeats} ${tx(locale, "players")} · ${tx(locale, "blinds")} ${t.smallBlind}/${t.bigBlind} · ${tx(locale, "buyIn")} ${t.buyIn}`),
                   React.createElement("div", { className: "hp-tmeta" }, `${tx(locale, "room")}${locale === "zh" ? "：" : ": "}${t.tableId}`),
                 ),
-                React.createElement("span", { className: `hp-badge ${t.status === "playing" ? "live" : "wait"}` }, tx(locale, t.status === "playing" ? "playing" : "waiting")),
+                React.createElement(
+                  "span",
+                  { className: `hp-badge ${t.status === "playing" ? "live" : "wait"}` },
+                  tx(locale, t.status === "playing" ? "playing" : t.status === "paused" ? "paused" : "waiting"),
+                ),
                 full
                   ? React.createElement("button", { className: "hp-btn", disabled: !store.connected, onClick: () => watchTable(t.tableId) }, tx(locale, "watch"))
                   : React.createElement(

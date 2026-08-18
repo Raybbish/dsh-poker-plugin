@@ -37,8 +37,10 @@ network.
   a game. Each bot calls a user-configured API with only its private player
   view; every
   response is validated against the engine's legal actions before it applies.
-  When the last connected human leaves, the table pauses immediately: no AI
-  requests, timeout actions, or new hands run until a human returns.
+  When the last human deliberately leaves, the current hand is settled without
+  further AI requests and the table returns to idle. A dropped connection
+  pauses the hand for resumption; no AI requests or timeout actions run while
+  no human is connected.
 - **Real poker rules** — blinds 5/10, hole cards, flop/turn/river, showdown,
   fold/check/call/bet/raise/all-in, minimum-raise progression, side pots,
   uncalled-bet refunds, odd-chip tiebreak, big-blind option, heads-up rules,
@@ -51,9 +53,10 @@ network.
   `commandId` dedup, `expectedVersion` fencing, WebSocket reconnect with
   snapshot resume, heartbeat, per-player private views (nobody sees anyone
   else's unrevealed hole cards), crypto-secure shuffle (never `Math.random`).
-- **Disconnect rules** — the acting player auto-folds when facing a bet after
-  the 30 s deadline, otherwise auto-checks; seats persist across refreshes and
-  are cashed out at hand end when still disconnected.
+- **Disconnect rules** — while another human remains connected, the acting
+  player auto-folds when facing a bet after the 30 s deadline, otherwise
+  auto-checks. If the final human disconnects, the hand freezes for resume;
+  seats persist across refreshes.
 - **Durable state** — tables, player identities, wallets and the ledger survive
   `dsh web` restarts via the DSH storage domain.
 

@@ -67,7 +67,7 @@ export interface LobbyTableView {
     name: string;
     maxSeats: number;
     playerCount: number;
-    status: "idle" | "playing";
+    status: "idle" | "playing" | "paused";
     smallBlind: number;
     bigBlind: number;
     buyIn: number;
@@ -175,6 +175,7 @@ export interface LobbySource {
         playerId: string;
     }[];
     hasHand: boolean;
+    hasConnectedHuman: boolean;
 }
 export declare function buildLobbyView(source: LobbySource): LobbyTableView;
 /**

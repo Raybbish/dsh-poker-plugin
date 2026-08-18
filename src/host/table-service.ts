@@ -118,7 +118,10 @@ export class TableService {
       for (const seat of state.seats) {
         if (seat !== null && seat !== undefined) {
           seat.connected = seat.isBot === true;
-          seat.leaving = false;
+          // A deliberate leave must survive a crash/restart so an abandoned
+          // AI-only hand can be settled and its human seat cashed out. Ordinary
+          // disconnected humans keep `leaving` false and may still resume.
+          if (seat.isBot === true) seat.leaving = false;
           // Reconcile seats written before the registry existed (or by older
           // versions) so identity verification stays authoritative.
           if (!this.players.has(seat.playerId)) {
@@ -135,7 +138,16 @@ export class TableService {
       }
       state.handNumber = state.handNumber ?? 0;
       this.tables.set(tableId, state);
-      if (state.hand !== null) this.armTurnTimer(state);
+      const abandoned = state.hand !== null && this.tableIsDeliberatelyAbandoned(state);
+      if (abandoned) {
+        const events = this.settleAbandonedHand(state);
+        this.recordEvents(state, events);
+        state.version += 1;
+        await this.persistTable(state);
+        await this.afterEngineChange(state, events);
+      } else if (state.hand !== null) {
+        this.armTurnTimer(state);
+      }
     }
   }
 
@@ -164,6 +176,7 @@ export class TableService {
           createdAt: state.createdAt,
           players: state.seats.filter((s): s is Seat => s !== null && s !== undefined),
           hasHand: state.hand !== null,
+          hasConnectedHuman: this.tableHasConnectedHuman(state),
         }),
       )
       .sort((a, b) => a.createdAt - b.createdAt);
@@ -357,11 +370,18 @@ export class TableService {
         // Mid-hand: fold now, cash out when the hand ends.
         seat.leaving = true;
         const outcome = this.engine.removePlayer(state, playerId, "left the table");
-        this.recordEvents(state, outcome.events);
+        const events = [...outcome.events];
+        // A deliberate departure by the final resumable human must not leave
+        // a full, permanently unjoinable AI-only hand. Settle it through the
+        // normal engine path without asking any bot for another decision.
+        if (this.tableIsDeliberatelyAbandoned(state) && state.hand !== null) {
+          events.push(...this.settleAbandonedHand(state));
+        }
+        this.recordEvents(state, events);
         state.version += 1;
         await this.persistTable(state);
         this.emit(state.tableId);
-        await this.afterEngineChange(state, outcome.events);
+        await this.afterEngineChange(state, events);
         return;
       }
       if (!seat.leaving) {
@@ -453,6 +473,14 @@ export class TableService {
     return state.seats.some(
       (seat) => seat !== null && seat !== undefined && seat.isBot !== true && seat.connected && !seat.leaving,
     );
+  }
+
+  /** True only when every human seat has explicitly requested to leave. */
+  private tableIsDeliberatelyAbandoned(state: TableState): boolean {
+    const humans = state.seats.filter(
+      (seat): seat is Seat => seat !== null && seat !== undefined && seat.isBot !== true,
+    );
+    return humans.length > 0 && humans.every((seat) => seat.leaving === true);
   }
 
   /** Register a brand-new player: grant + durable identity record (both awaited). */
@@ -559,6 +587,20 @@ export class TableService {
     list.push(commandId);
     if (list.length > COMMAND_HISTORY_LIMIT) list.splice(0, list.length - COMMAND_HISTORY_LIMIT);
     state.appliedCommands[playerId] = list;
+  }
+
+  /** Finish an AI-only hand after the last human deliberately leaves. */
+  private settleAbandonedHand(state: TableState): EngineEvent[] {
+    const events: EngineEvent[] = [];
+    while (state.hand !== null) {
+      const active = state.hand.players.filter((player) => !player.folded && !player.excluded);
+      if (active.length <= 1) break;
+      const victim = active[active.length - 1]!;
+      const outcome = this.engine.removePlayer(state, victim.playerId, "last human left");
+      if (!outcome.changed) break;
+      events.push(...outcome.events);
+    }
+    return events;
   }
 
   /**

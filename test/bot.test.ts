@@ -91,6 +91,70 @@ test("bot: a table with no connected human pauses timers and makes no AI request
   assert.equal(ctx.pendingTimeoutCount, 1, "the turn deadline resumes with the human");
 });
 
+test("bot: leaving last human settles the hand, frees the seat and returns the lobby to idle", async () => {
+  const { service, ctx } = makeService();
+  const table = await service.createTable("Paused lobby", 4);
+  const human = await service.joinTable(table.tableId, "Human", 1000);
+  await service.addBot(table.tableId, human.playerId);
+  await service.addBot(table.tableId, human.playerId);
+  await service.addBot(table.tableId, human.playerId);
+  await service.setConnected(human.playerId, table.tableId, true);
+  assert.ok(service.getState(table.tableId)?.hand !== null, "all four players start a hand");
+
+  await service.leaveTable(human.playerId, table.tableId);
+  const state = service.getState(table.tableId)!;
+  assert.equal(state.hand, null, "an intentionally abandoned AI-only hand is settled");
+  assert.equal(state.seats.some((seat) => seat?.playerId === human.playerId), false, "the leaving human seat is freed");
+  assert.equal(state.seats.filter((seat) => seat?.isBot === true).length, 3, "bots remain seated for a future human");
+  assert.equal(ctx.pendingTimeoutCount, 0, "no AI-only deadline remains");
+  assert.equal(service.lobbyView().find((entry) => entry.tableId === table.tableId)?.status, "idle");
+});
+
+test("bot: an interrupted hand is labelled paused when its human disconnects without leaving", async () => {
+  const { service, ctx } = makeService();
+  const table = await service.createTable("Disconnected lobby", 3);
+  const human = await service.joinTable(table.tableId, "Human", 1000);
+  await service.addBot(table.tableId, human.playerId);
+  await service.addBot(table.tableId, human.playerId);
+  await service.setConnected(human.playerId, table.tableId, true);
+
+  await service.setConnected(human.playerId, table.tableId, false);
+  assert.ok(service.getState(table.tableId)?.hand !== null, "a disconnected human can resume the hand");
+  assert.equal(ctx.pendingTimeoutCount, 0, "the disconnected table is frozen");
+  assert.equal(service.lobbyView().find((entry) => entry.tableId === table.tableId)?.status, "paused");
+});
+
+test("bot: a disconnected human remains resumable when another human leaves, including after restart", async () => {
+  const domain = new MemoryDomain();
+  const firstCtx = new FakeCtx();
+  const first = new TableService(firstCtx as never, domain as never);
+  const table = await first.createTable("Resumable human", 3);
+  const leaving = await first.joinTable(table.tableId, "Leaving Human", 1000);
+  const resumable = await first.joinTable(table.tableId, "Resumable Human", 1000);
+  await first.setConnected(leaving.playerId, table.tableId, true);
+  await first.setConnected(resumable.playerId, table.tableId, true);
+  await first.addBot(table.tableId, leaving.playerId);
+
+  // The first hand started before the bot joined. Fold its current actor so
+  // the next hand includes both humans and the bot.
+  const firstHand = first.getState(table.tableId)!;
+  const firstActor = firstHand.seats[firstHand.hand!.currentTurnSeat]!;
+  await first.action(firstActor.playerId, table.tableId, "finish-setup-hand", firstHand.version, "fold");
+  assert.equal(first.getState(table.tableId)?.hand?.players.length, 3);
+
+  await first.setConnected(resumable.playerId, table.tableId, false);
+  await first.leaveTable(leaving.playerId, table.tableId);
+  assert.ok(first.getState(table.tableId)?.hand !== null, "the disconnected human keeps the hand resumable");
+  first.dispose();
+
+  const restarted = new TableService(new FakeCtx() as never, domain as never);
+  await restarted.init();
+  const restored = restarted.getState(table.tableId)!;
+  assert.ok(restored.hand !== null, "restart does not settle a hand with a resumable human");
+  assert.equal(restored.seats.some((seat) => seat?.playerId === resumable.playerId), true);
+  assert.equal(restarted.lobbyView().find((entry) => entry.tableId === table.tableId)?.status, "paused");
+});
+
 test("bot: proposed DeepSeek action is clamped to the engine's legal actions", () => {
   const view = {
     myLegalActions: [

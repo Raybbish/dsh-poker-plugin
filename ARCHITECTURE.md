@@ -195,8 +195,9 @@ after each accepted command; writes are serialized per service.
 
 | situation | rule |
 | --- | --- |
-| socket closes | seat marked disconnected; turn timer still auto-acts |
-| last connected human leaves | freeze the live hand, bots and timers until a human reconnects |
+| socket closes while another human remains | seat marked disconnected; turn timer still auto-acts |
+| final human disconnects | freeze the live hand, bots and timers for resume; lobby status becomes `paused` |
+| final human deliberately leaves | settle the abandoned hand without more AI calls, cash out the human and return the table to `idle` |
 | acting player's deadline passes | auto-fold if `toCall > 0`, else auto-check |
 | reconnect (`resume`) | seat reattached; `leaving` cancelled |
 | leave between hands | seat freed immediately, stack cashed out |
@@ -217,8 +218,8 @@ after each accepted command; writes are serialized per service.
   checks language persistence, action submission and seat containment, and
   captures desktop, tablet and mobile screenshots.
 - `test/bot.test.ts` — authorization for adding bots, multiple AI seats,
-  provider request shape, legal-action clamping, safe fallbacks and the
-  human-presence pause rule.
+  provider request shape, legal-action clamping, safe fallbacks, pause status
+  and abandoned-hand settlement.
 - `test/gateway.test.ts` — same-origin browser handshakes, cross-origin and
   malformed-origin rejection, and non-browser client compatibility.
 - `test/evaluator.test.ts` — table-driven ranking (royal flush → high card),

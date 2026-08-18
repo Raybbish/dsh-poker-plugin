@@ -83,6 +83,8 @@ export declare class TableService {
     setConnected(playerId: string, tableId: string, connected: boolean): Promise<void>;
     private requireTable;
     private tableHasConnectedHuman;
+    /** True only when every human seat has explicitly requested to leave. */
+    private tableIsDeliberatelyAbandoned;
     /** Register a brand-new player: grant + durable identity record (both awaited). */
     private registerPlayer;
     private grant;
@@ -103,6 +105,8 @@ export declare class TableService {
     onChanged(listener: (tableId: string) => void): () => void;
     private isCommandApplied;
     private markCommandApplied;
+    /** Finish an AI-only hand after the last human deliberately leaves. */
+    private settleAbandonedHand;
     /**
      * React to engine changes: write hand-result ledger entries, free leaving /
      * disconnected seats, start the next hand, re-arm the turn timer.

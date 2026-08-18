@@ -92,7 +92,7 @@ export interface LobbyTable {
   name: string;
   maxSeats: number;
   playerCount: number;
-  status: "idle" | "playing";
+  status: "idle" | "playing" | "paused";
   smallBlind: number;
   bigBlind: number;
   buyIn: number;

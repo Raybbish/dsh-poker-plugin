@@ -138,6 +138,7 @@ test("lobby: table list renders rows with Join and Watch buttons", () => {
     lobby: [
       { tableId: "t1", name: "Friday", maxSeats: 6, playerCount: 2, status: "playing", smallBlind: 5, bigBlind: 10, buyIn: 1000, createdAt: 0 },
       { tableId: "t2", name: "Full House", maxSeats: 2, playerCount: 2, status: "playing", smallBlind: 5, bigBlind: 10, buyIn: 1000, createdAt: 1 },
+      { tableId: "t3", name: "Paused Table", maxSeats: 10, playerCount: 9, status: "paused", smallBlind: 5, bigBlind: 10, buyIn: 1000, createdAt: 2 },
     ],
   });
   const html = render(React.createElement(__test.LobbyView));
@@ -145,6 +146,7 @@ test("lobby: table list renders rows with Join and Watch buttons", () => {
   assert.match(html, /Full House/);
   assert.match(html, /加入/);
   assert.match(html, /观战/); // full tables offer spectating
+  assert.match(html, /已暂停/);
 });
 
 // ── overlay / error / reconnecting ───────────────────────────────────────────
