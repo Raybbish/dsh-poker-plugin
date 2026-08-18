@@ -60,6 +60,48 @@ const DESKTOP: Record<number, Slot[]> = {
     [0.92, 0.52],
     [0.5, 1],
   ],
+  7: [
+    [0.18, 0.04],
+    [0.5, 0.02],
+    [0.82, 0.04],
+    [0, 0.5],
+    [1, 0.5],
+    [0.18, 1],
+    [0.5, 1],
+  ],
+  8: [
+    [0, 0.02],
+    [0.333, 0.02],
+    [0.667, 0.02],
+    [1, 0.02],
+    [0, 0.5],
+    [1, 0.5],
+    [0.2, 1],
+    [0.55, 1],
+  ],
+  9: [
+    [0, 0],
+    [0.333, 0],
+    [0.667, 0],
+    [1, 0],
+    [0, 0.38],
+    [1, 0.38],
+    [0, 0.76],
+    [1, 0.76],
+    [0.5, 1],
+  ],
+  10: [
+    [0, 0],
+    [0.333, 0],
+    [0.667, 0],
+    [1, 0],
+    [0, 0.38],
+    [1, 0.38],
+    [0, 0.76],
+    [1, 0.76],
+    [0.33, 1],
+    [0.67, 1],
+  ],
 };
 
 const COMPACT: Record<number, Slot[]> = {
@@ -93,6 +135,10 @@ const COMPACT: Record<number, Slot[]> = {
     [0.75, 0.32],
     [0.5, 1],
   ],
+  7: DESKTOP[7]!,
+  8: DESKTOP[8]!,
+  9: DESKTOP[9]!,
+  10: DESKTOP[10]!,
 };
 
 /** 6-player variant for narrow stages where four top seats would collide. */
@@ -106,12 +152,12 @@ const DESKTOP_6_NARROW: Slot[] = [
 ];
 
 function templateFor(count: number, compact: boolean, safeW: number): Slot[] {
-  const n = Math.min(Math.max(count, 2), 6);
+  const n = Math.min(Math.max(count, 2), 10);
   if (!compact && n === 6 && safeW < 4 * SEAT_W + 3 * 16) {
     return DESKTOP_6_NARROW;
   }
   const table = compact ? COMPACT : DESKTOP;
-  return table[n] ?? table[6]!;
+  return table[n] ?? table[10]!;
 }
 
 /** slot index (into the template) for each input seat. */

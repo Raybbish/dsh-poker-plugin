@@ -59,6 +59,20 @@ test("service: join grants wallet, buy-in debits it, cash-out credits it back", 
   assert.equal(h.service.walletOf(joined.playerId), STARTING_WALLET);
 });
 
+test("service: tables support up to 10 seats and reject an eleventh player", async () => {
+  const h = makeService();
+  const table = await h.service.createTable("Ten-handed", 10);
+  assert.equal(table.maxSeats, 10);
+  for (let i = 1; i <= 10; i++) await h.service.joinTable(table.tableId, `Player ${i}`, 1000);
+  assert.equal(h.service.getState(table.tableId)!.seats.filter(Boolean).length, 10);
+  await assert.rejects(
+    h.service.joinTable(table.tableId, "Player 11", 1000),
+    (error: unknown) => (error as TableError).code === "table-full",
+  );
+  const clamped = await h.service.createTable("Clamped", 99);
+  assert.equal(clamped.maxSeats, 10);
+});
+
 test("service: two players connect → hand starts; everyone can act; chips conserved", async () => {
   const h = makeService();
   const { tableId, p1, p2 } = await setupTwoPlayers(h);

@@ -1,10 +1,12 @@
 /** Compact room bar: brand, table meta, room id, connection state, actions. */
 import * as React from "react";
 import type { TableView as TableViewData } from "../view-types";
-import { leaveTable, stopWatching, Store, useStore } from "../store";
+import { leaveTable, setLocale, stopWatching, Store, useStore } from "../store";
+import { tx } from "../i18n";
 
 export function PokerHeader(): React.ReactElement {
   const store = useStore();
+  const locale = store.locale;
   const t = store.table as TableViewData | null;
   const inTable = t !== null && store.session !== null && t.tableId === store.session.tableId;
   const watching = t !== null && !inTable && t.tableId === store.spectateTableId;
@@ -17,8 +19,8 @@ export function PokerHeader(): React.ReactElement {
       "div",
       { className: "hp-brand" },
       React.createElement("span", { className: "hp-spade" }, "♠"),
-      React.createElement("span", null, "游戏中心"),
-      React.createElement("span", { className: "hp-crumb" }, "/ 德州扑克"),
+      React.createElement("span", null, tx(locale, "gameCenter")),
+      React.createElement("span", { className: "hp-crumb" }, `/ ${tx(locale, "poker")}`),
     ),
     showMeta && t !== null
       ? React.createElement(
@@ -28,7 +30,7 @@ export function PokerHeader(): React.ReactElement {
           React.createElement("span", { className: "hp-roomid" }, t.tableId),
           React.createElement("button", {
             className: "hp-btn",
-            title: "Copy room ID",
+            title: tx(locale, "copyRoomTitle"),
             onClick: () => {
               const text = t.tableId;
               if (navigator.clipboard !== undefined && navigator.clipboard.writeText !== undefined) {
@@ -46,15 +48,25 @@ export function PokerHeader(): React.ReactElement {
                 document.body.removeChild(ta);
               }
             },
-          }, "复制房间"),
+          }, tx(locale, "copyRoom")),
         )
       : null,
     React.createElement("div", { className: "hp-spacer" }),
     !store.connected
-      ? React.createElement("span", { className: "hp-conn" }, React.createElement("div", { className: "hp-dotpulse" }), "重新连接中…")
+      ? React.createElement("span", { className: "hp-conn" }, React.createElement("div", { className: "hp-dotpulse" }), tx(locale, "reconnecting"))
       : null,
-    inTable ? React.createElement("button", { className: "hp-btn danger", onClick: leaveTable }, "离开牌桌") : null,
-    watching ? React.createElement("button", { className: "hp-btn", onClick: stopWatching }, "返回大厅") : null,
-    React.createElement("button", { className: "hp-btn", onClick: () => Store.set({ open: false }) }, "关闭"),
+    React.createElement(
+      "button",
+      {
+        "data-testid": "language-toggle",
+        className: "hp-btn hp-language-toggle",
+        title: locale === "zh" ? "Switch to English" : "切换为中文",
+        onClick: () => setLocale(locale === "zh" ? "en" : "zh"),
+      },
+      locale === "zh" ? "English" : "中文",
+    ),
+    inTable ? React.createElement("button", { className: "hp-btn danger", onClick: leaveTable }, tx(locale, "leaveTable")) : null,
+    watching ? React.createElement("button", { className: "hp-btn", onClick: stopWatching }, tx(locale, "backLobby")) : null,
+    React.createElement("button", { className: "hp-btn", onClick: () => Store.set({ open: false }) }, tx(locale, "close")),
   );
 }

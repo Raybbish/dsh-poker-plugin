@@ -37,7 +37,7 @@ TypeScript compiled to ESM, mounted by one `cordis.patch.yml` row.
 | `src/host/bot-controller.ts` | optional AI decisions + legal-action validation | host-side `fetch` |
 | `src/host/persistence.ts` | storage-domain spec (`poker` unit) | `ctx.storageDomain` |
 | `src/host/index.ts` | cordis plugin entry (`name/inject/apply`) | cordis |
-| `src/client/entry.ts`, `store.ts`, `components/*`, `poker.css` | browser UI source (lobby + table) | seed words `react` |
+| `src/client/entry.ts`, `i18n.ts`, `store.ts`, `components/*`, `poker.css` | localized browser UI source | seed words `react` |
 
 Lifecycle: the plugin `apply()` opens the storage domain, boots the
 `TableService`, conditionally starts `BotController` when a server-side API key
@@ -73,7 +73,7 @@ boot a temporary `dsh web` → run the smoke test).
 `PokerEngine` operates on `TableState` and an explicit `HandState`:
 
 ```
-idle ──(≥2 seated & connected)──► preflop ──► flop ──► turn ──► river ──► showdown
+idle ──(≥2 connected, incl. ≥1 human)──► preflop ──► flop ──► turn ──► river ──► showdown
   ▲                                │  blinds + deal                    │
   └──────────(hand end)────────────┴───────────────────────────────────┘
 ```
@@ -196,6 +196,7 @@ after each accepted command; writes are serialized per service.
 | situation | rule |
 | --- | --- |
 | socket closes | seat marked disconnected; turn timer still auto-acts |
+| last connected human leaves | freeze the live hand, bots and timers until a human reconnects |
 | acting player's deadline passes | auto-fold if `toCall > 0`, else auto-check |
 | reconnect (`resume`) | seat reattached; `leaving` cancelled |
 | leave between hands | seat freed immediately, stack cashed out |
@@ -213,10 +214,11 @@ after each accepted command; writes are serialized per service.
   the mobile block never shrinks fonts below 11 px, reduced-motion disables
   all animations).
 - `test/ui-layout.test.mjs` — boots the real distributed plugin in a browser,
-  checks action submission and seat containment, and captures desktop, tablet
-  and mobile screenshots.
+  checks language persistence, action submission and seat containment, and
+  captures desktop, tablet and mobile screenshots.
 - `test/bot.test.ts` — authorization for adding bots, multiple AI seats,
-  provider request shape, legal-action clamping and safe fallback behaviour.
+  provider request shape, legal-action clamping, safe fallbacks and the
+  human-presence pause rule.
 - `test/gateway.test.ts` — same-origin browser handshakes, cross-origin and
   malformed-origin rejection, and non-browser client compatibility.
 - `test/evaluator.test.ts` — table-driven ranking (royal flush → high card),
@@ -240,9 +242,9 @@ after each accepted command; writes are serialized per service.
 
 - **Single process / single host**: tables live in one `dsh web` process
   (persisted across restarts, but not clustered).
-- **No durable hand replay/export**: the UI has a recent public-log drawer, but
-  snapshots expose only the latest 60 of the table's bounded 100 log entries.
-  There is no per-hand archive, previous-hand replay or HHV export.
+- **No durable hand replay/export**: the UI has a localized recent public-log
+  drawer, but snapshots expose only the latest 60 of the table's bounded 100
+  log entries. There is no per-hand archive, previous-hand replay or HHV export.
 - **Identity is token-only**: anyone who copies a token can act as that
   player (localhost-only trust model — acceptable for a Play Token MVP). The
   registry prevents forged-identity joins; token theft itself is out of scope.
@@ -273,5 +275,5 @@ over a real WebSocket server (22 checks).
 ## 12. Next steps
 
 - Durable per-hand history + replay/HHV export; table deletion and admin;
-  rebuy UI; sound; localization via the DSH locale service; leaderboards over
-  the ledger.
+  rebuy UI; sound; additional locales beyond Chinese/English; leaderboards
+  over the ledger.

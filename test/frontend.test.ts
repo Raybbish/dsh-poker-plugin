@@ -30,6 +30,10 @@ interface TestExports {
   TableView: () => React.ReactNode;
   PokerOverlay: () => React.ReactNode;
   PokerCenterButton: (p: Record<string, unknown>) => React.ReactNode;
+  setLocale: (locale: "zh" | "en") => void;
+  translateLog: (text: string, locale: "zh" | "en") => string;
+  translateError: (text: string, locale: "zh" | "en") => string;
+  translateHandLabel: (text: string, locale: "zh" | "en") => string;
   seatPositions: (seats: number[], viewerSeat: number | null, compact: boolean) => { left: number; top: number }[];
   seatPositionsPx: (seats: number[], viewerSeat: number | null, compact: boolean, w: number, h: number) => { left: number; top: number }[];
   seatBoxes: (centers: { left: number; top: number }[], w: number, h: number) => { left: number; top: number; right: number; bottom: number }[];
@@ -108,7 +112,7 @@ function fixtureTable(overrides: Record<string, unknown> = {}): Record<string, u
 }
 
 function setStore(patch: Record<string, unknown>): void {
-  __test.Store.set({ open: false, connected: true, connecting: false, session: null, lobby: [], table: null, spectateTableId: null, wallet: 9000, error: null, ...patch });
+  __test.Store.set({ locale: "zh", open: false, connected: true, connecting: false, session: null, lobby: [], table: null, spectateTableId: null, wallet: 9000, error: null, ...patch });
 }
 
 // ── lobby states ─────────────────────────────────────────────────────────────
@@ -117,15 +121,16 @@ test("lobby: loading state while connecting", () => {
   setStore({ connecting: true });
   const html = render(React.createElement(__test.LobbyView));
   assert.match(html, /hp-spinner/);
-  assert.match(html, /Connecting to game server/);
+  assert.match(html, /正在连接游戏服务器/);
 });
 
 test("lobby: empty state when no tables exist", () => {
   setStore({ connecting: false, lobby: [] });
   const html = render(React.createElement(__test.LobbyView));
-  assert.match(html, /No tables yet/);
-  assert.match(html, /Create a table/);
-  assert.match(html, /Play Tokens/);
+  assert.match(html, /暂时没有牌桌/);
+  assert.match(html, /创建牌桌/);
+  assert.match(html, /游戏筹码/);
+  assert.match(html, /<option value="10">10<\/option>/);
 });
 
 test("lobby: table list renders rows with Join and Watch buttons", () => {
@@ -138,8 +143,8 @@ test("lobby: table list renders rows with Join and Watch buttons", () => {
   const html = render(React.createElement(__test.LobbyView));
   assert.match(html, /Friday/);
   assert.match(html, /Full House/);
-  assert.match(html, /Join/);
-  assert.match(html, /Watch/); // full tables offer Watch
+  assert.match(html, /加入/);
+  assert.match(html, /观战/); // full tables offer spectating
 });
 
 // ── overlay / error / reconnecting ───────────────────────────────────────────
@@ -147,20 +152,20 @@ test("lobby: table list renders rows with Join and Watch buttons", () => {
 test("overlay: error toast is shown", () => {
   setStore({ open: true, error: "stale-version: please retry" });
   const html = render(React.createElement(__test.PokerOverlay));
-  assert.match(html, /stale-version: please retry/);
+  assert.match(html, /牌局状态已更新，请重试/);
   assert.match(html, /hp-toast/);
 });
 
 test("overlay: reconnecting banner appears on the table when the socket drops", () => {
   setStore({ open: true, connected: false, session: { playerId: "p3", token: "x", tableId: "t1", nickname: "Carol" }, table: fixtureTable() });
   const html = render(React.createElement(__test.PokerOverlay));
-  assert.match(html, /Connection lost — reconnecting/);
+  assert.match(html, /连接已断开，正在重新连接/);
 });
 
 test("overlay: shows the lobby when not seated and not watching", () => {
   setStore({ open: true, table: null, spectateTableId: null });
   const html = render(React.createElement(__test.PokerOverlay));
-  assert.match(html, /Create a table/);
+  assert.match(html, /创建牌桌/);
 });
 
 // ── table states ─────────────────────────────────────────────────────────────
@@ -218,7 +223,7 @@ test("table: spectating state — no own cards, join prompt, no action buttons",
     }),
   });
   const html = render(React.createElement(__test.PokerOverlay));
-  assert.match(html, /观战中/);
+  assert.match(html, /正在观战/);
   assert.match(html, /加入牌桌/);
   assert.match(html, /返回大厅/);
   assert.doesNotMatch(html, /跟注 10/);
@@ -232,7 +237,7 @@ test("table: waiting state when no hand runs", () => {
   const html = render(React.createElement(__test.PokerOverlay));
   assert.match(html, /等待玩家入座/);
   assert.match(html, /复制房间 ID 邀请朋友/);
-  assert.match(html, /加入 AI 机器人/);
+  assert.match(html, /加入机器人/);
   assert.match(html, /data-testid="add-bot"/);
 });
 
@@ -246,14 +251,15 @@ test("table: AI-controlled seats carry an AI badge", () => {
   setStore({ open: true, session: { playerId: "p2", token: "x", tableId: "t1", nickname: "Human" }, table });
   const html = render(React.createElement(__test.PokerOverlay));
   assert.match(html, /hp-ai-badge/);
-  assert.match(html, />AI</);
+  assert.match(html, />机器人</);
+  assert.match(html, /机器人<\/div>/);
 });
 
 test("table: another AI bot can be added while a hand is running", () => {
   setStore({ open: true, session: { playerId: "p2", token: "x", tableId: "t1", nickname: "Human" }, table: fixtureTable({ mySeat: 1 }) });
   const html = render(React.createElement(__test.PokerOverlay));
   assert.match(html, /data-testid="add-bot-active"/);
-  assert.match(html, /＋ AI · 3\/6/);
+  assert.match(html, /＋ 机器人 · 3\/6/);
   assert.match(html, /机器人将在下一手牌加入/);
 });
 
@@ -268,8 +274,9 @@ test("table: showdown result banner shows winners and revealed hands", () => {
     }),
   });
   const html = render(React.createElement(__test.PokerOverlay));
-  assert.match(html, /Bob wins 120/);
-  assert.match(html, /Showdown:/);
+  assert.match(html, /Bob 赢得 120/);
+  assert.match(html, /摊牌：/);
+  assert.match(html, /K 葫芦/);
   assert.match(html, /hp-showdown/);
 });
 
@@ -278,10 +285,53 @@ test("table: showdown result banner shows winners and revealed hands", () => {
 test("sidebar: entry shows label when wide and status dot reflects connection", () => {
   setStore({ connected: true });
   const wideHtml = render(React.createElement(__test.PokerCenterButton, { wide: true }));
-  assert.match(wideHtml, /Poker/);
+  assert.match(wideHtml, /德州扑克/);
   assert.match(wideHtml, /hp-statusdot on/);
   const railHtml = render(React.createElement(__test.PokerCenterButton, { wide: false }));
   assert.doesNotMatch(railHtml, /class="plabel"/);
+});
+
+// ── complete language modes ────────────────────────────────────────────────
+
+test("language: English mode switches the complete lobby and header", () => {
+  setStore({ locale: "en", open: true, lobby: [] });
+  const html = render(React.createElement(__test.PokerOverlay));
+  assert.match(html, /Game Center/);
+  assert.match(html, /Texas Hold&#x27;em/);
+  assert.match(html, /Create a table/);
+  assert.match(html, /No tables yet/);
+  assert.match(html, /Play Tokens/);
+  assert.match(html, />中文</);
+  assert.doesNotMatch(html, /创建牌桌|暂时没有牌桌|游戏筹码/);
+});
+
+test("language: English mode switches table actions, status and results", () => {
+  setStore({
+    locale: "en",
+    open: true,
+    session: { playerId: "p3", token: "x", tableId: "t1", nickname: "Carol" },
+    table: fixtureTable({
+      winners: [{ playerId: "p2", nickname: "Bob", amount: 120, handLabel: "Full House, Ks over 8s" }],
+      reveal: [{ playerId: "p2", nickname: "Bob", cards: ["13s", "8h"], handLabel: "Full House, Ks over 8s" }],
+    }),
+  });
+  const html = render(React.createElement(__test.PokerOverlay));
+  assert.match(html, /Hand #3/);
+  assert.match(html, /Bob wins 120/);
+  assert.match(html, /Showdown: /);
+  assert.match(html, /Call 10/);
+  assert.match(html, /Fold/);
+  assert.match(html, /All-in/);
+  assert.doesNotMatch(html, /第 3 手|赢得|摊牌：|跟注|弃牌|全下/);
+});
+
+test("language: server logs, errors, bot names and hand labels are localized in Chinese", () => {
+  assert.equal(__test.translateLog("AI Player 2 raises to 50.", "zh"), "机器人 2 加注到 50。");
+  assert.equal(__test.translateLog("Hand #8 finished.", "zh"), "第 8 手结束。");
+  assert.equal(__test.translateLog("Showdown: Bob wins 120.", "zh"), "摊牌：Bob 赢得 120。");
+  assert.equal(__test.translateError("not your turn", "zh"), "还没轮到你");
+  assert.equal(__test.translateHandLabel("Full House, Ks over 8s", "zh"), "K 葫芦（带 8 对）");
+  assert.equal(__test.translateLog("Bob raises to 50.", "en"), "Bob raises to 50.");
 });
 
 // ── geometry + CSS guards ────────────────────────────────────────────────────
@@ -300,7 +350,7 @@ test("seat geometry: 2 players — opponent top, viewer bottom (new explicit lay
 
 test("seat geometry: every count stays inside the stage and the full card fits (containment)", () => {
   // Percent contract on the nominal stage.
-  for (const count of [2, 3, 4, 5, 6]) {
+  for (const count of [2, 3, 4, 5, 6, 7, 8, 9, 10]) {
     const seats = Array.from({ length: count }, (_, i) => i);
     const pos = __test.seatPositions(seats, count - 1, false);
     for (const p of pos) {
@@ -330,7 +380,7 @@ test("seat geometry: px layout keeps every full card inside the stage at every s
   ];
   const cardW = 172;
   const cardH = 130;
-  for (const count of [2, 3, 4, 5, 6]) {
+  for (const count of [2, 3, 4, 5, 6, 7, 8, 9, 10]) {
     const seats = Array.from({ length: count }, (_, i) => i);
     for (const stage of stages) {
       const centers = layout(seats, count - 1, false, stage.w, stage.h);
@@ -353,9 +403,9 @@ test("seat geometry: px layout keeps every full card inside the stage at every s
   }
 });
 
-test("seat geometry: compact ring keeps seats inside the nominal 390px stage", () => {
-  const six = __test.seatPositions([0, 1, 2, 3, 4, 5], null, true);
-  for (const pos of six) {
+test("seat geometry: compact 10-seat fallback stays inside the nominal 390px stage", () => {
+  const ten = __test.seatPositions([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], null, true);
+  for (const pos of ten) {
     assert.ok(pos.left >= 4 && pos.left <= 96 && pos.top >= 6 && pos.top <= 94, `compact seat inside stage: ${JSON.stringify(pos)}`);
   }
 });

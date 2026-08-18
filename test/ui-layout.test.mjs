@@ -116,7 +116,7 @@ async function createTableWithBots(name, botCount) {
   // names deliberately short even when the table name includes a timestamp.
   const manager = new Bot(`Bot-${++botSeq}`);
   await manager.ready;
-  manager.send({ type: "createTable", requestId: `c${++botSeq}`, name, maxSeats: 6 });
+  manager.send({ type: "createTable", requestId: `c${++botSeq}`, name, maxSeats: Math.max(6, botCount + 1) });
   await waitFor(() => manager.lobby !== null && manager.lobby.some((t) => t.name === name), "table in bot lobby");
   const tableId = manager.lobby.find((t) => t.name === name).tableId;
   await manager.join(tableId);
@@ -321,6 +321,28 @@ async function assertLayout(page, viewport, playerCount) {
   return m;
 }
 
+test("language switch changes the whole lobby and persists after reload", { timeout: 120000 }, async () => {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await context.newPage();
+  try {
+    await openPoker(page);
+    await page.getByRole("heading", { name: "创建牌桌" }).waitFor();
+    await page.getByTestId("language-toggle").click();
+    await page.getByRole("heading", { name: "Create a table" }).waitFor();
+    assert.equal(await page.getByText("暂时没有牌桌").count(), 0);
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForSelector(".hp-sidebar-btn", { timeout: 45_000 });
+    await dismissOverlays(page);
+    const box = await page.locator(".hp-sidebar-btn").boundingBox();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await page.getByRole("heading", { name: "Create a table" }).waitFor();
+    assert.equal(((await page.getByTestId("language-toggle").textContent()) ?? "").trim(), "中文");
+  } finally {
+    await context.close();
+  }
+});
+
 test("primary bet button submits the displayed amount", { timeout: 120000 }, async () => {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
@@ -395,8 +417,8 @@ test("browser layout: four viewports with 4 players + screenshots", { timeout: 2
   }
 });
 
-test("browser layout: player counts 2/3/6 at 1440x900", { timeout: 240000 }, async () => {
-  for (const count of [2, 3, 6]) {
+test("browser layout: player counts 2/3/6/10 at 1440x900", { timeout: 300000 }, async () => {
+  for (const count of [2, 3, 6, 10]) {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const page = await context.newPage();
     let bots = [];

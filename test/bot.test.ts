@@ -54,6 +54,43 @@ test("bot: a human can fill the remaining seats with uniquely named AI players a
   );
 });
 
+test("bot: a table with no connected human pauses timers and makes no AI request", async () => {
+  const { service, ctx } = makeService();
+  const table = await service.createTable("AI pause", 4);
+  const human = await service.joinTable(table.tableId, "Human", 1000);
+  await service.setConnected(human.playerId, table.tableId, true);
+  await service.addBot(table.tableId, human.playerId);
+  await service.addBot(table.tableId, human.playerId);
+
+  await service.leaveTable(human.playerId, table.tableId);
+  assert.equal(service.getState(table.tableId)?.hand, null, "an AI-only next hand must not start");
+  assert.equal(ctx.pendingTimeoutCount, 0, "the turn deadline is paused when the last human leaves");
+
+  let decisions = 0;
+  const provider: BotDecisionProvider = {
+    async decide() {
+      decisions += 1;
+      return { action: "fold" };
+    },
+  };
+  const controller = new BotController(service, provider, {
+    decisionDelayMs: 0,
+    schedule: (callback) => {
+      queueMicrotask(callback);
+      return () => {};
+    },
+  });
+  controller.start();
+  for (let i = 0; i < 10; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+  controller.dispose();
+  assert.equal(decisions, 0, "AI-vs-AI play must not consume API calls without a human");
+
+  const returningHuman = await service.joinTable(table.tableId, "Returning Human", 1000);
+  await service.setConnected(returningHuman.playerId, table.tableId, true);
+  assert.ok(service.getState(table.tableId)?.hand !== null, "a connected human resumes the table");
+  assert.equal(ctx.pendingTimeoutCount, 1, "the turn deadline resumes with the human");
+});
+
 test("bot: proposed DeepSeek action is clamped to the engine's legal actions", () => {
   const view = {
     myLegalActions: [

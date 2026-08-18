@@ -6,6 +6,7 @@ import { PokerHeader } from "./PokerHeader";
 import { TableView } from "./TableView";
 import { LobbyView } from "./LobbyView";
 import { Spinner } from "./ui";
+import { translateError, tx } from "../i18n";
 
 export function PokerOverlay(): React.ReactElement | null {
   const store = useStore();
@@ -18,7 +19,7 @@ export function PokerOverlay(): React.ReactElement | null {
 
   let body: React.ReactNode;
   if (showTableLoading) {
-    body = React.createElement(Spinner, { label: "Loading table…" });
+    body = React.createElement(Spinner, { label: tx(store.locale, "loadingTable") });
   } else if (showTable && t !== null) {
     body = React.createElement(TableView, null);
   } else {
@@ -28,7 +29,7 @@ export function PokerOverlay(): React.ReactElement | null {
   return React.createElement(
     "div",
     { className: "hp-root" },
-    store.error !== null ? React.createElement("div", { className: "hp-toast" }, store.error) : null,
+    store.error !== null ? React.createElement("div", { className: "hp-toast" }, translateError(store.error, store.locale)) : null,
     React.createElement(PokerHeader, null),
     React.createElement("div", { className: "hp-body" }, body),
   );

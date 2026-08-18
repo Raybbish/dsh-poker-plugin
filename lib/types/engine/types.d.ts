@@ -166,7 +166,7 @@ export interface TableConfig {
 }
 export declare const DEFAULT_TABLE_CONFIG: TableConfig;
 export declare const MIN_PLAYERS = 2;
-export declare const MAX_PLAYERS = 6;
+export declare const MAX_PLAYERS = 10;
 export declare const STARTING_WALLET = 10000;
 export declare const MAX_LOG_ENTRIES = 100;
 /** Legal action offered to one player by the server (client never computes rules). */

@@ -4,6 +4,7 @@
  * single source of truth; the client renders snapshots and sends commands.
  */
 import * as React from "react";
+import { type Locale, readLocale, writeLocale } from "./i18n";
 
 export interface Session {
   playerId: string;
@@ -13,6 +14,7 @@ export interface Session {
 }
 
 export interface StoreShape {
+  locale: Locale;
   open: boolean;
   ws: WebSocket | null;
   connecting: boolean;
@@ -33,6 +35,7 @@ export interface StoreShape {
 }
 
 export const Store: StoreShape = {
+  locale: readLocale(),
   open: false,
   ws: null,
   connecting: false,
@@ -68,6 +71,11 @@ export const Store: StoreShape = {
     this.emit();
   },
 };
+
+export function setLocale(locale: Locale): void {
+  writeLocale(locale);
+  Store.set({ locale });
+}
 
 export function useStore(): StoreShape {
   const force = React.useReducer((x: number) => x + 1, 0)[1];

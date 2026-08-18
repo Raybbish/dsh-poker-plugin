@@ -1,7 +1,8 @@
 /** Fixed bottom action dock: Fold / Check-Call / Bet-Raise / All-in. */
 import * as React from "react";
 import type { LegalAction, TableView } from "../view-types";
-import { addBot, fmt, joinTable, playAction, stopWatching } from "../store";
+import { addBot, fmt, joinTable, playAction, stopWatching, useStore } from "../store";
+import { displayNickname, tx } from "../i18n";
 
 export interface ActionDockProps {
   table: TableView;
@@ -12,6 +13,7 @@ export interface ActionDockProps {
 
 export function ActionDock(props: ActionDockProps): React.ReactElement {
   const t = props.table;
+  const locale = useStore().locale;
   const mySeat = t.mySeat;
   const myTurn = mySeat !== null && mySeat === t.currentTurnSeat && props.connected;
   const [selectedRatio, setSelectedRatio] = React.useState(1.25);
@@ -24,8 +26,8 @@ export function ActionDock(props: ActionDockProps): React.ReactElement {
   const checkAction = actions.find((a) => a.type === "check");
   const canFold = actions.some((a) => a.type === "fold");
   const canAllIn = actions.some((a) => a.type === "allin");
-  const callLabel = callAction !== undefined && callAction.amount !== undefined ? `跟注 ${fmt(callAction.amount)}` : checkAction !== undefined ? "过牌" : null;
-  const betLabel = betAction !== undefined ? "下注" : raiseAction !== undefined ? "加注" : null;
+  const callLabel = callAction !== undefined && callAction.amount !== undefined ? `${tx(locale, "call")} ${fmt(callAction.amount)}` : checkAction !== undefined ? tx(locale, "check") : null;
+  const betLabel = betAction !== undefined ? tx(locale, "bet") : raiseAction !== undefined ? tx(locale, "raise") : null;
   const raiseBase = betAction !== undefined ? betAction : raiseAction;
   const potTotal = t.pots.reduce((sum, pot) => sum + pot.amount, 0);
   const occupiedSeats = t.seats.filter((seat) => seat.playerId !== "").length;
@@ -45,11 +47,11 @@ export function ActionDock(props: ActionDockProps): React.ReactElement {
 
   const current = t.seats.find((s) => s.seat === t.currentTurnSeat);
   let hint: string;
-  if (!props.connected) hint = "连接中断，正在重连…";
-  else if (props.spectating) hint = "观战中 · 入座后即可参与";
-  else if (t.phase === "idle") hint = "等待其他玩家加入…";
-  else if (!myTurn) hint = `等待 ${current !== undefined ? current.nickname : "其他玩家"} 操作…`;
-  else hint = "轮到你了";
+  if (!props.connected) hint = tx(locale, "disconnectedHint");
+  else if (props.spectating) hint = tx(locale, "spectatingHint");
+  else if (t.phase === "idle") hint = tx(locale, "waitingOthers");
+  else if (!myTurn) hint = tx(locale, "waitingPlayerAction", { name: current !== undefined ? displayNickname(current.nickname, current.isBot, locale) : tx(locale, "otherPlayer") });
+  else hint = tx(locale, "yourTurn");
 
   if (props.spectating) {
     return React.createElement(
@@ -58,8 +60,8 @@ export function ActionDock(props: ActionDockProps): React.ReactElement {
       React.createElement(
         "div",
         { className: "hp-actionrow" },
-        React.createElement("button", { className: "hp-action-btn call", disabled: !props.connected, onClick: () => joinTable(t.tableId, props.nickname || "Player", t.buyIn) }, "加入牌桌"),
-        React.createElement("button", { className: "hp-btn ghost", onClick: stopWatching }, "返回大厅"),
+        React.createElement("button", { className: "hp-action-btn call", disabled: !props.connected, onClick: () => joinTable(t.tableId, props.nickname || (locale === "zh" ? "玩家" : "Player"), t.buyIn) }, tx(locale, "joinTable")),
+        React.createElement("button", { className: "hp-btn ghost", onClick: stopWatching }, tx(locale, "backLobby")),
       ),
       React.createElement("div", { className: "hp-hint" }, hint),
     );
@@ -80,10 +82,10 @@ export function ActionDock(props: ActionDockProps): React.ReactElement {
             disabled: !props.connected || full,
             onClick: () => addBot(t.tableId),
           },
-          full ? "牌桌已满" : "＋ 加入 AI 机器人",
+          full ? tx(locale, "tableFull") : tx(locale, "addBot"),
         ),
       ),
-      React.createElement("div", { className: "hp-hint" }, full ? "等待牌局开始…" : "没有真人？添加 AI 后立即开局"),
+      React.createElement("div", { className: "hp-hint" }, full ? tx(locale, "waitingStart") : tx(locale, "addBotHint")),
     );
   }
 
@@ -118,19 +120,19 @@ export function ActionDock(props: ActionDockProps): React.ReactElement {
             step: 1,
             value: selectedAmount,
             disabled: !myTurn,
-            "aria-label": betLabel === "加注" ? "加注金额" : "下注金额",
+            "aria-label": raiseAction !== undefined ? tx(locale, "raiseAmount") : tx(locale, "betAmount"),
             onChange: (event) => setCustomAmount(Number(event.target.value)),
           }),
           React.createElement("span", { className: "hp-preset-value" }, fmt(selectedAmount)),
           canAllIn
-            ? React.createElement("button", { className: "hp-preset allin", disabled: !myTurn, onClick: () => playAction("allin") }, "全下")
+            ? React.createElement("button", { className: "hp-preset allin", disabled: !myTurn, onClick: () => playAction("allin") }, tx(locale, "allIn"))
             : null,
         )
       : null,
     React.createElement(
       "div",
       { className: "hp-actionrow" },
-      React.createElement("button", { className: "hp-action-btn fold", disabled: !myTurn || !canFold, onClick: () => playAction("fold") }, "弃牌"),
+      React.createElement("button", { className: "hp-action-btn fold", disabled: !myTurn || !canFold, onClick: () => playAction("fold") }, tx(locale, "fold")),
       callLabel !== null
         ? React.createElement("button", { className: "hp-action-btn call", disabled: !myTurn, onClick: () => playAction(callAction !== undefined ? "call" : "check") }, callLabel)
         : null,
@@ -145,7 +147,7 @@ export function ActionDock(props: ActionDockProps): React.ReactElement {
             },
             `${betLabel} ${fmt(selectedAmount)}`,
           )
-        : React.createElement("button", { className: "hp-action-btn allin primary-action", disabled: !myTurn || !canAllIn, onClick: () => playAction("allin") }, "全下"),
+        : React.createElement("button", { className: "hp-action-btn allin primary-action", disabled: !myTurn || !canAllIn, onClick: () => playAction("allin") }, tx(locale, "allIn")),
     ),
     React.createElement(
       "div",
@@ -158,9 +160,9 @@ export function ActionDock(props: ActionDockProps): React.ReactElement {
           className: "hp-add-bot-inline",
           disabled: !props.connected || full,
           onClick: () => addBot(t.tableId),
-          title: full ? "牌桌已满" : "机器人将在下一手牌加入",
+          title: full ? tx(locale, "tableFull") : tx(locale, "botNextHand"),
         },
-        full ? `${occupiedSeats}/${t.maxSeats} 已满` : `＋ AI · ${occupiedSeats}/${t.maxSeats}`,
+        full ? tx(locale, "seatsFull", { occupied: occupiedSeats, max: t.maxSeats }) : tx(locale, "addBotCompact", { occupied: occupiedSeats, max: t.maxSeats }),
       ),
     ),
   );

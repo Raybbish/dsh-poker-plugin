@@ -197,7 +197,7 @@ export const DEFAULT_TABLE_CONFIG: TableConfig = {
 };
 
 export const MIN_PLAYERS = 2;
-export const MAX_PLAYERS = 6;
+export const MAX_PLAYERS = 10;
 export const STARTING_WALLET = 10_000;
 export const MAX_LOG_ENTRIES = 100;
 

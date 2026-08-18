@@ -11,6 +11,8 @@ import { NOMINAL_STAGE, SEAT_H, SEAT_W, seatPositionsPx } from "../layout";
 import { PlayerSeat } from "./PlayerSeat";
 import { CommunityCards, PotDisplay, WaitingState } from "./PokerTable";
 import { useCompact } from "./useCompact";
+import { useStore } from "../store";
+import { tx } from "../i18n";
 
 function useElementSize<T extends HTMLElement>(): [React.RefObject<T>, { width: number; height: number }] {
   const ref = React.useRef<T | null>(null);
@@ -34,6 +36,7 @@ export interface PokerStageProps {
 
 export function PokerStage(props: PokerStageProps): React.ReactElement {
   const t = props.table;
+  const locale = useStore().locale;
   const compact = useCompact();
   const [stageRef, size] = useElementSize<HTMLDivElement>();
 
@@ -94,7 +97,14 @@ export function PokerStage(props: PokerStageProps): React.ReactElement {
   }
 
   const phaseLabel =
-    ({ idle: "等待入座", preflop: "翻牌前", flop: "翻牌", turn: "转牌", river: "河牌", showdown: "摊牌" } as Record<string, string>)[t.phase] ?? t.phase;
+    ({
+      idle: tx(locale, "phaseIdle"),
+      preflop: tx(locale, "phasePreflop"),
+      flop: tx(locale, "phaseFlop"),
+      turn: tx(locale, "phaseTurn"),
+      river: tx(locale, "phaseRiver"),
+      showdown: tx(locale, "phaseShowdown"),
+    } as Record<string, string>)[t.phase] ?? t.phase;
   return React.createElement(
     "div",
     { className: "hp-stage", ref: stageRef as React.Ref<HTMLDivElement> },
@@ -102,7 +112,7 @@ export function PokerStage(props: PokerStageProps): React.ReactElement {
       "div",
       { className: "hp-statusline" },
       React.createElement("span", { className: "hp-phase" }, phaseLabel),
-      React.createElement("span", { className: "hp-hand" }, `Hand #${t.handNumber}`),
+      React.createElement("span", { className: "hp-hand" }, tx(locale, "hand", { n: t.handNumber })),
       React.createElement("span", null, `${t.name}`),
     ),
     body,

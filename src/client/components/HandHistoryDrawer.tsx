@@ -1,9 +1,11 @@
 /** Collapsible hand-history drawer (right-side overlay). */
 import * as React from "react";
 import type { LogEntry } from "../view-types";
-import { timeStr } from "../store";
+import { timeStr, useStore } from "../store";
+import { translateLog, tx } from "../i18n";
 
 export function HandHistoryDrawer(props: { open: boolean; log: LogEntry[]; onClose: () => void }): React.ReactElement | null {
+  const locale = useStore().locale;
   const ref = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     if (props.open && ref.current !== null) ref.current.scrollTop = ref.current.scrollHeight;
@@ -15,9 +17,9 @@ export function HandHistoryDrawer(props: { open: boolean; log: LogEntry[]; onClo
     React.createElement(
       "div",
       { className: "hp-drawer-head" },
-      React.createElement("span", null, "Hand History"),
+      React.createElement("span", null, tx(locale, "handHistory")),
       React.createElement("span", { className: "hp-spacer" }),
-      React.createElement("button", { className: "hp-btn ghost", onClick: props.onClose }, "Close"),
+      React.createElement("button", { className: "hp-btn ghost", onClick: props.onClose }, tx(locale, "close")),
     ),
     React.createElement(
       "div",
@@ -28,7 +30,7 @@ export function HandHistoryDrawer(props: { open: boolean; log: LogEntry[]; onClo
           "div",
           { key: i, className: cls },
           React.createElement("span", { className: "t" }, timeStr(entry.at)),
-          entry.text,
+          translateLog(entry.text, locale),
         );
       }),
     ),

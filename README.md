@@ -28,12 +28,17 @@ network.
 
 ## Features (MVP)
 
-- **Lobby** — create a table (2–6 seats), join by list or by room ID (copy
+- **Lobby** — create a table (2–10 seats), join by list or by room ID (copy
   button), nickname + buy-in, wallet display.
+- **Chinese / English modes** — switch the complete interface from the room
+  bar, lobby and actions through results, errors and hand history. The browser
+  remembers the selected language.
 - **Optional AI players** — add one or more server-side bots before or during
   a game. Each bot calls a user-configured API with only its private player
   view; every
   response is validated against the engine's legal actions before it applies.
+  When the last connected human leaves, the table pauses immediately: no AI
+  requests, timeout actions, or new hands run until a human returns.
 - **Real poker rules** — blinds 5/10, hole cards, flop/turn/river, showdown,
   fold/check/call/bet/raise/all-in, minimum-raise progression, side pots,
   uncalled-bet refunds, odd-chip tiebreak, big-blind option, heads-up rules,
@@ -154,7 +159,7 @@ and animates dealing, betting, folding and wins (respecting
 npm install          # typescript + @types (node/ws/react) + react/react-dom
 npm run typecheck    # tsc --noEmit over src/ + test/
 npm run build        # tsc → lib/ + dist-test/, bundles the TSX/CSS client
-npm test             # build + node --test (83 unit + frontend tests)
+npm test             # build + node --test
 npm run test:ui      # browser layout/actions at desktop, tablet and mobile sizes
 npm run test:install # install & distribution verification (see below)
 ```
@@ -169,7 +174,7 @@ src/
   protocol.ts wire schema (zod) + per-player view builders
   host/     index.ts (cordis plugin) · table-service.ts · gateway.ts
             bot-controller.ts · persistence.ts · types-augment.ts
-  client/   entry.ts + store/components/styles  ← TS/TSX browser source
+  client/   entry.ts + i18n/store/components/styles  ← TS/TSX browser source
 cordis.patch.yml       ← the profile bundle patch (auto-inserts the poker row)
 test/       evaluator · engine · ledger · service · full-game · frontend · bot
             gateway · audit · ui-layout
@@ -206,7 +211,7 @@ The `poker` row config (all optional):
 | `smallBlind`     | `5`     | small blind (chips)              |
 | `bigBlind`       | `10`    | big blind                        |
 | `buyIn`          | `1000`  | default buy-in per table         |
-| `maxSeats`       | `6`     | default table size (2–6)         |
+| `maxSeats`       | `6`     | default table size (2–10)        |
 | `actionTimeoutMs`| `30000` | turn deadline before auto-action |
 | `startingWallet` | `10000` | Play Tokens granted per new player |
 | `deepseekApiKey` | unset; falls back to `DEEPSEEK_API_KEY` | server-side AI API key |

@@ -2,9 +2,11 @@
 import * as React from "react";
 import type { LobbyTable } from "../view-types";
 import { createTable, joinTable, Store, useStore, watchTable } from "../store";
+import { translateError, tx } from "../i18n";
 
 export function LobbyView(): React.ReactElement {
   const store = useStore();
+  const locale = store.locale;
   const [nickname, setNickname] = React.useState(store.nickname || (store.session !== null ? store.session.nickname : ""));
   const [tableName, setTableName] = React.useState("");
   const [maxSeats, setMaxSeats] = React.useState("6");
@@ -14,17 +16,17 @@ export function LobbyView(): React.ReactElement {
   const walletText = store.wallet === null ? "…" : String(store.wallet).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
   if (store.connecting) {
-    return React.createElement("div", { className: "hp-loading" }, React.createElement("div", { className: "hp-spinner" }), React.createElement("div", null, "Connecting to game server…"));
+    return React.createElement("div", { className: "hp-loading" }, React.createElement("div", { className: "hp-spinner" }), React.createElement("div", null, tx(locale, "connecting")));
   }
 
   const createPanel = React.createElement(
     "div",
     { className: "hp-panel" },
-    React.createElement("h3", null, "Create a table"),
+    React.createElement("h3", null, tx(locale, "createTable")),
     React.createElement(
       "div",
       { className: "hp-field" },
-      React.createElement("label", null, "Your nickname"),
+      React.createElement("label", null, tx(locale, "nickname")),
       React.createElement("input", { "data-testid": "nickname", className: "hp-input", value: nickname, maxLength: 20, onChange: (e) => setNickname(e.target.value) }),
     ),
     React.createElement(
@@ -33,17 +35,17 @@ export function LobbyView(): React.ReactElement {
       React.createElement(
         "div",
         { className: "hp-field", style: { flex: 1 } },
-        React.createElement("label", null, "Table name"),
-        React.createElement("input", { "data-testid": "table-name", className: "hp-input", value: tableName, maxLength: 40, placeholder: "Friday Night", onChange: (e) => setTableName(e.target.value) }),
+        React.createElement("label", null, tx(locale, "tableName")),
+        React.createElement("input", { "data-testid": "table-name", className: "hp-input", value: tableName, maxLength: 40, placeholder: tx(locale, "tableNamePlaceholder"), onChange: (e) => setTableName(e.target.value) }),
       ),
       React.createElement(
         "div",
         { className: "hp-field", style: { width: 88 } },
-        React.createElement("label", null, "Seats"),
+        React.createElement("label", null, tx(locale, "seats")),
         React.createElement(
           "select",
           { className: "hp-input", value: maxSeats, onChange: (e: React.ChangeEvent<HTMLSelectElement>) => setMaxSeats(e.target.value) },
-          ["2", "3", "4", "5", "6"].map((n) => React.createElement("option", { key: n, value: n }, n)),
+          ["2", "3", "4", "5", "6", "7", "8", "9", "10"].map((n) => React.createElement("option", { key: n, value: n }, n)),
         ),
       ),
     ),
@@ -54,10 +56,10 @@ export function LobbyView(): React.ReactElement {
         disabled: !store.connected || nickname.trim() === "",
         onClick: () => {
           Store.set({ nickname: nickname.trim() });
-          createTable(tableName.trim() || `Poker ${maxSeats}p`, Number(maxSeats));
+          createTable(tableName.trim() || (locale === "zh" ? `扑克 ${maxSeats} 人桌` : `Poker ${maxSeats}-seat`), Number(maxSeats));
         },
       },
-      "Create table",
+      tx(locale, "createTable"),
     ),
   );
 
@@ -66,19 +68,19 @@ export function LobbyView(): React.ReactElement {
       ? React.createElement(
           "div",
           { className: "hp-panel" },
-          React.createElement("h3", null, "Open tables"),
+          React.createElement("h3", null, tx(locale, "openTables")),
           React.createElement(
             "div",
             { className: "hp-empty" },
             React.createElement("div", { className: "hp-bigspade" }, "♠"),
-            React.createElement("div", null, "No tables yet"),
-            React.createElement("div", { className: "hp-hint" }, "Create one, or ask a friend for a room ID to join by ID."),
+            React.createElement("div", null, tx(locale, "noTables")),
+            React.createElement("div", { className: "hp-hint" }, tx(locale, "noTablesHint")),
           ),
         )
       : React.createElement(
           "div",
           { className: "hp-panel" },
-          React.createElement("h3", null, "Open tables"),
+          React.createElement("h3", null, tx(locale, "openTables")),
           React.createElement(
             "div",
             { className: "hp-tablelist" },
@@ -91,12 +93,12 @@ export function LobbyView(): React.ReactElement {
                   "div",
                   { className: "hp-tinfo" },
                   React.createElement("div", { className: "hp-tname" }, t.name),
-                  React.createElement("div", { className: "hp-tmeta" }, `${t.playerCount}/${t.maxSeats} players · blinds ${t.smallBlind}/${t.bigBlind} · buy-in ${t.buyIn}`),
-                  React.createElement("div", { className: "hp-tmeta" }, `Room: ${t.tableId}`),
+                  React.createElement("div", { className: "hp-tmeta" }, `${t.playerCount}/${t.maxSeats} ${tx(locale, "players")} · ${tx(locale, "blinds")} ${t.smallBlind}/${t.bigBlind} · ${tx(locale, "buyIn")} ${t.buyIn}`),
+                  React.createElement("div", { className: "hp-tmeta" }, `${tx(locale, "room")}${locale === "zh" ? "：" : ": "}${t.tableId}`),
                 ),
-                React.createElement("span", { className: `hp-badge ${t.status === "playing" ? "live" : "wait"}` }, t.status === "playing" ? "playing" : "waiting"),
+                React.createElement("span", { className: `hp-badge ${t.status === "playing" ? "live" : "wait"}` }, tx(locale, t.status === "playing" ? "playing" : "waiting")),
                 full
-                  ? React.createElement("button", { className: "hp-btn", disabled: !store.connected, onClick: () => watchTable(t.tableId) }, "Watch")
+                  ? React.createElement("button", { className: "hp-btn", disabled: !store.connected, onClick: () => watchTable(t.tableId) }, tx(locale, "watch"))
                   : React.createElement(
                       "button",
                       {
@@ -105,10 +107,10 @@ export function LobbyView(): React.ReactElement {
                         disabled: !store.connected || nickname.trim() === "",
                         onClick: () => {
                           Store.set({ nickname: nickname.trim() });
-                          joinTable(t.tableId, nickname.trim() || "Player", Number(buyIn) > 0 ? Number(buyIn) : t.buyIn);
+                          joinTable(t.tableId, nickname.trim() || (locale === "zh" ? "玩家" : "Player"), Number(buyIn) > 0 ? Number(buyIn) : t.buyIn);
                         },
                       },
-                      "Join",
+                      tx(locale, "join"),
                     ),
               );
             }),
@@ -121,19 +123,19 @@ export function LobbyView(): React.ReactElement {
     React.createElement(
       "div",
       { className: "hp-wallet" },
-      "Play Tokens: ",
+      `${tx(locale, "playTokens")}${locale === "zh" ? "：" : ": "}`,
       React.createElement("b", null, walletText),
-      " · blinds 5/10 · default buy-in 1000",
+      ` · ${tx(locale, "blinds")} 5/10 · ${tx(locale, "defaultBuyIn")} 1000`,
     ),
     React.createElement("div", { className: "hp-lobby-grid" }, createPanel, listPanel),
     React.createElement(
       "div",
       { className: "hp-panel" },
-      React.createElement("h3", null, "Join by room ID"),
+      React.createElement("h3", null, tx(locale, "joinByRoom")),
       React.createElement(
         "div",
         { className: "hp-row" },
-        React.createElement("input", { "data-testid": "join-id", className: "hp-input", style: { flex: 1, minWidth: 140 }, value: joinId, placeholder: "paste a room ID", onChange: (e) => setJoinId(e.target.value) }),
+        React.createElement("input", { "data-testid": "join-id", className: "hp-input", style: { flex: 1, minWidth: 140 }, value: joinId, placeholder: tx(locale, "pasteRoom"), onChange: (e) => setJoinId(e.target.value) }),
         React.createElement(
           "button",
           {
@@ -143,19 +145,19 @@ export function LobbyView(): React.ReactElement {
               const id = joinId.trim();
               const meta = tables.find((t) => t.tableId === id);
               Store.set({ nickname: nickname.trim() });
-              joinTable(id, nickname.trim() || "Player", meta !== undefined ? meta.buyIn : 1000);
+              joinTable(id, nickname.trim() || (locale === "zh" ? "玩家" : "Player"), meta !== undefined ? meta.buyIn : 1000);
             },
           },
-          "Join",
+          tx(locale, "join"),
         ),
       ),
       React.createElement(
         "div",
         { className: "hp-field" },
-        React.createElement("label", null, "Buy-in chips (per table)"),
+        React.createElement("label", null, tx(locale, "buyInChips")),
         React.createElement("input", { className: "hp-input", type: "number", min: 1, value: buyIn, onChange: (e) => setBuyIn(e.target.value) }),
       ),
     ),
-    React.createElement("div", { className: "hp-err" }, store.error !== null ? store.error : " "),
+    React.createElement("div", { className: "hp-err" }, store.error !== null ? translateError(store.error, locale) : " "),
   );
 }

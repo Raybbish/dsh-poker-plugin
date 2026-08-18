@@ -173,6 +173,12 @@ export class TableService {
     return this.ledger.balanceOf(playerId);
   }
 
+  /** Whether a non-bot seat is currently present and connected at the table. */
+  hasConnectedHuman(tableId: string): boolean {
+    const state = this.tables.get(tableId);
+    return state !== undefined && this.tableHasConnectedHuman(state);
+  }
+
   snapshotFor(tableId: string, playerId: string): TableView {
     const state = this.requireTable(tableId);
     return buildTableView(state, playerId, this.engine);
@@ -413,6 +419,7 @@ export class TableService {
       await this.persistTable(state);
       this.emit(state.tableId);
       this.maybeStartHand(state);
+      if (state.hand !== null) this.armTurnTimer(state);
       return true;
     });
   }
@@ -430,6 +437,7 @@ export class TableService {
       await this.persistTable(state);
       this.emit(state.tableId);
       if (connected) this.maybeStartHand(state);
+      if (state.hand !== null) this.armTurnTimer(state);
     });
   }
 
@@ -439,6 +447,12 @@ export class TableService {
     const state = this.tables.get(tableId);
     if (state === undefined) throw new TableError("table not found", "table-not-found");
     return state;
+  }
+
+  private tableHasConnectedHuman(state: TableState): boolean {
+    return state.seats.some(
+      (seat) => seat !== null && seat !== undefined && seat.isBot !== true && seat.connected && !seat.leaving,
+    );
   }
 
   /** Register a brand-new player: grant + durable identity record (both awaited). */
@@ -577,17 +591,18 @@ export class TableService {
           }
         }
         this.maybeStartHand(state);
-        if (state.hand !== null) this.armTurnTimer(state);
+        this.armTurnTimer(state);
       })();
     }
     this.maybeStartHand(state);
-    if (state.hand !== null) this.armTurnTimer(state);
+    this.armTurnTimer(state);
     return Promise.resolve();
   }
 
-  /** Start the next hand when ≥2 seated players are connected and no hand runs. */
+  /** Start the next hand when ≥2 players and at least one human are connected. */
   private maybeStartHand(state: TableState): void {
     if (state.hand !== null) return;
+    if (!this.tableHasConnectedHuman(state)) return;
     const connected = state.seats.filter((s) => s !== null && s !== undefined && s.connected);
     if (connected.length < MIN_PLAYERS) return;
     const outcome = this.engine.startHand(state);
@@ -606,6 +621,9 @@ export class TableService {
       existing();
       this.turnTimers.delete(state.tableId);
     }
+    // An AI-only table is frozen in place: no deadline auto-actions and no API
+    // work. Reconnecting or joining a human re-arms this timer.
+    if (!this.tableHasConnectedHuman(state)) return;
     const hand = state.hand;
     if (hand === null) return;
     if (hand.turnDeadlineAt === 0) return;
@@ -622,6 +640,7 @@ export class TableService {
     return this.enqueue(async () => {
       const state = this.tables.get(tableId);
       if (state === undefined) return;
+      if (!this.tableHasConnectedHuman(state)) return;
       const hand = state.hand;
       if (hand === null) return;
       const outcome = this.engine.autoAct(state, this.now());

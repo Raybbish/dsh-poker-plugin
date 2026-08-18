@@ -17,7 +17,7 @@ const configSchema = z.object({
   smallBlind: z.number().int().min(1).optional(),
   bigBlind: z.number().int().min(2).optional(),
   buyIn: z.number().int().min(1).optional(),
-  maxSeats: z.number().int().min(2).max(6).optional(),
+  maxSeats: z.number().int().min(2).max(10).optional(),
   actionTimeoutMs: z.number().int().min(1000).optional(),
   startingWallet: z.number().int().min(1).optional(),
   deepseekApiKey: z.string().min(1).optional(),

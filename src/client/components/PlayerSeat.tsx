@@ -1,8 +1,9 @@
 /** One player card: avatar, name, stack, bet, state, hole cards, badges. */
 import * as React from "react";
 import type { SeatView as SeatViewType } from "../view-types";
-import { fmt } from "../store";
+import { fmt, useStore } from "../store";
 import { Badges, CardView } from "./ui";
+import { displayNickname, tx } from "../i18n";
 
 export interface PlayerSeatProps {
   seat: SeatViewType;
@@ -16,6 +17,7 @@ export interface PlayerSeatProps {
 
 export function PlayerSeat(props: PlayerSeatProps): React.ReactElement | null {
   const { seat } = props;
+  const locale = useStore().locale;
   if (seat === undefined || seat.playerId === "") return null;
 
   let cards: React.ReactNode = null;
@@ -35,13 +37,13 @@ export function PlayerSeat(props: PlayerSeatProps): React.ReactElement | null {
   }
 
   let stateText: React.ReactNode = null;
-  if (seat.folded) stateText = React.createElement("div", { className: "hp-sstate" }, "已弃牌");
-  else if (seat.excluded) stateText = React.createElement("div", { className: "hp-sstate" }, "等待下一手");
-  else if (seat.allIn) stateText = React.createElement("div", { className: "hp-sstate allin" }, "全下");
+  if (seat.folded) stateText = React.createElement("div", { className: "hp-sstate" }, tx(locale, "folded"));
+  else if (seat.excluded) stateText = React.createElement("div", { className: "hp-sstate" }, tx(locale, "nextHand"));
+  else if (seat.allIn) stateText = React.createElement("div", { className: "hp-sstate allin" }, tx(locale, "allIn"));
 
   const countdown =
     seat.isTurn && props.deadlineMs > 0 && props.secondsLeft !== null
-      ? React.createElement("div", { className: "hp-count" }, `${props.secondsLeft}s`)
+      ? React.createElement("div", { className: "hp-count" }, tx(locale, "seconds", { n: props.secondsLeft }))
       : null;
 
   let cls = "hp-seat";
@@ -60,19 +62,19 @@ export function PlayerSeat(props: PlayerSeatProps): React.ReactElement | null {
       React.createElement(
         "div",
         { className: "hp-avatar" },
-        (seat.nickname || "?").slice(0, 1).toUpperCase(),
+        displayNickname(seat.nickname || "?", seat.isBot, locale).slice(0, 1).toUpperCase(),
         React.createElement(Badges, { isDealer: seat.isDealer, isSmallBlind: seat.isSmallBlind, isBigBlind: seat.isBigBlind }),
         React.createElement("div", { className: "hp-dot" + (seat.connected ? "" : " off") }),
       ),
-      React.createElement("div", { className: "hp-sname" }, seat.nickname + (seat.isMe ? "（你）" : "")),
-      seat.isBot ? React.createElement("span", { className: "hp-ai-badge" }, "AI") : null,
+      React.createElement("div", { className: "hp-sname" }, displayNickname(seat.nickname, seat.isBot, locale) + (seat.isMe ? (locale === "zh" ? `（${tx(locale, "you")}）` : ` (${tx(locale, "you")})`) : "")),
+      seat.isBot ? React.createElement("span", { className: "hp-ai-badge" }, tx(locale, "bot")) : null,
       countdown,
     ),
     React.createElement(
       "div",
       { className: "hp-srow" },
       React.createElement("div", { className: "hp-sstack" }, fmt(seat.stack)),
-      seat.bet > 0 ? React.createElement("div", { key: `bet-${seat.playerId.slice(0, 6)}-${seat.bet}`, className: "hp-sbet" }, `下注 ${fmt(seat.bet)}`) : null,
+      seat.bet > 0 ? React.createElement("div", { key: `bet-${seat.playerId.slice(0, 6)}-${seat.bet}`, className: "hp-sbet" }, `${tx(locale, "bet")} ${fmt(seat.bet)}`) : null,
     ),
     stateText,
     cards,

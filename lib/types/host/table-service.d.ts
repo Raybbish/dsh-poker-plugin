@@ -57,6 +57,8 @@ export declare class TableService {
     private enqueue;
     lobbyView(): LobbyTableView[];
     walletOf(playerId: string): number;
+    /** Whether a non-bot seat is currently present and connected at the table. */
+    hasConnectedHuman(tableId: string): boolean;
     snapshotFor(tableId: string, playerId: string): TableView;
     tableIds(): string[];
     getState(tableId: string): TableState | undefined;
@@ -80,6 +82,7 @@ export declare class TableService {
     /** Socket lifecycle: mark connected/disconnected. */
     setConnected(playerId: string, tableId: string, connected: boolean): Promise<void>;
     private requireTable;
+    private tableHasConnectedHuman;
     /** Register a brand-new player: grant + durable identity record (both awaited). */
     private registerPlayer;
     private grant;
@@ -105,7 +108,7 @@ export declare class TableService {
      * disconnected seats, start the next hand, re-arm the turn timer.
      */
     private afterEngineChange;
-    /** Start the next hand when ≥2 seated players are connected and no hand runs. */
+    /** Start the next hand when ≥2 players and at least one human are connected. */
     private maybeStartHand;
     /** Arm the turn-deadline timer for the current hand, if any. */
     private armTurnTimer;

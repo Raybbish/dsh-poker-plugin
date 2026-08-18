@@ -7,10 +7,12 @@ import {
   leaveTable,
   playAction,
   rid,
+  setLocale,
   send,
   stopWatching,
   watchTable,
 } from "./store";
+import { displayNickname, translateError, translateHandLabel, translateLog, tx } from "./i18n";
 import { seatBoxes, seatPositions, seatPositionsPx } from "./layout";
 import { CSS } from "./styles";
 import { CardView } from "./components/ui";
@@ -38,7 +40,13 @@ export {
   leaveTable,
   playAction,
   rid,
+  setLocale,
   send,
   stopWatching,
   watchTable,
+  displayNickname,
+  translateError,
+  translateHandLabel,
+  translateLog,
+  tx,
 };

@@ -199,7 +199,7 @@ export class BotController {
   private async playIfBotTurn(tableId: string): Promise<void> {
     const state = this.service.getState(tableId);
     const hand = state?.hand;
-    if (state === undefined || hand === null || hand === undefined) return;
+    if (state === undefined || hand === null || hand === undefined || !this.service.hasConnectedHuman(tableId)) return;
     const seat = state.seats[hand.currentTurnSeat];
     if (seat === null || seat === undefined || seat.isBot !== true || this.inFlight.has(seat.playerId)) return;
 
@@ -215,7 +215,7 @@ export class BotController {
 
     try {
       const latest = this.service.getState(tableId);
-      if (latest?.hand === null || latest?.hand === undefined || latest.version !== view.version) return;
+      if (latest?.hand === null || latest?.hand === undefined || latest.version !== view.version || !this.service.hasConnectedHuman(tableId)) return;
       const latestSeat = latest.seats[latest.hand.currentTurnSeat];
       if (latestSeat?.playerId !== seat.playerId) return;
       const action = chooseBotAction(view, proposed);

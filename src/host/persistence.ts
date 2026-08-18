@@ -110,7 +110,7 @@ const playerRecordSchema = z.object({
 const tableStateSchema = z.object({
   tableId: z.string().min(1),
   name: z.string().min(1),
-  maxSeats: z.number().int().min(2).max(6),
+  maxSeats: z.number().int().min(2).max(10),
   smallBlind: z.number().int(),
   bigBlind: z.number().int(),
   buyIn: z.number().int(),
