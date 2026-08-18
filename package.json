@@ -2,13 +2,13 @@
   "name": "dsh-poker",
   "version": "0.1.0",
   "description": "An unofficial local multiplayer Texas Hold'em plugin for the DSH Web UI, with optional server-side AI players.",
-  "homepage": "https://github.com/Raybbish/dsh-poker#readme",
+  "homepage": "https://github.com/Raybbish/dsh-poker-plugin#readme",
   "bugs": {
-    "url": "https://github.com/Raybbish/dsh-poker/issues"
+    "url": "https://github.com/Raybbish/dsh-poker-plugin/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Raybbish/dsh-poker.git"
+    "url": "git+https://github.com/Raybbish/dsh-poker-plugin.git"
   },
   "type": "module",
   "main": "lib/host/index.js",
