@@ -33,6 +33,15 @@ network.
 - **Chinese / English modes** — switch the complete interface from the room
   bar, lobby and actions through results, errors and hand history. The browser
   remembers the selected language.
+- **Expressive table UI** — the sidebar and table expose the host Agent's
+  thinking / idle state; AI seats have stable visual characters and localized
+  thought lines across idle, observing, thinking, acting and reacting states.
+  Dealing, chips moving to the pot, folding, pot changes, turns and winner
+  payouts are animated while still respecting `prefers-reduced-motion`.
+- **Complete raise sizing** — choose minimum, half-pot, three-quarter-pot,
+  pot or maximum, drag the legal range slider, or enter an exact raise-to
+  amount. Every value is normalized to the server-provided legal bounds; on
+  mobile the controls become a touch-friendly bottom sheet.
 - **Optional AI players** — add one or more server-side bots before or during
   a game. Each bot calls a user-configured API with only its private player
   view; every
@@ -115,11 +124,20 @@ insert):
    `resume`.
 6. Full tables can be **watched** (spectate): the "Watch" button subscribes to
    the table's public snapshots without a seat — no hole cards are ever shown.
+7. A browser running on the host can delete a room from the lobby with a
+   two-step confirmation. An unfinished hand is cancelled and every seat's
+   current chips are refunded before the durable room record is removed.
 
 ## Play against an AI player
 
-Keep the API key on the host. Never paste it into the browser or commit it to
-`cordis.patch.yml`:
+For local play, open **AI 设置** in the game header—or click **＋ 加入机器人**—
+and enter a DeepSeek API key. This option is available only to a same-origin
+browser connected over loopback. The key is sent directly to the host process,
+kept in memory only, never written to game state, the ledger, logs,
+`localStorage` or profile files, and cannot be read back by the page. Enter it
+again after restarting `dsh web`.
+
+For unattended startup, supply the key to the host as an environment variable:
 
 ```bash
 DEEPSEEK_API_KEY=sk-your-key npx @deepseek-ai/dsh web
@@ -152,9 +170,8 @@ variable):
     botDecisionTimeoutMs: 12000
 ```
 
-The UI is responsive (1440 / 1024 / 390 px), styled with the DSH theme tokens,
-and animates dealing, betting, folding and wins (respecting
-`prefers-reduced-motion`).
+The UI is responsive (1440 / 1024 / 390 px) and styled with the DSH theme
+tokens.
 
 ## Development
 
@@ -180,12 +197,19 @@ src/
   client/   entry.ts + i18n/store/components/styles  ← TS/TSX browser source
 cordis.patch.yml       ← the profile bundle patch (auto-inserts the poker row)
 test/       evaluator · engine · ledger · service · full-game · frontend · bot
-            gateway · audit · ui-layout
+            gateway · audit · simulation · package-exports · ui-layout
 scripts/    build.mjs · smoke-test.mjs (end-to-end) · install-test.sh
 ```
 
 `scripts/build.mjs` bundles `src/client/entry.ts` and its TSX/CSS dependencies
 into the distributed `lib/client.js` `__ModuleLoader__` module.
+
+The dependency-free engine is also a public package subpath for bot policies,
+simulators and external tests:
+
+```ts
+import { PokerEngine, seededRng, evaluateBest } from "dsh-poker/engine";
+```
 
 ### Install & distribution verification
 
@@ -222,8 +246,9 @@ The `poker` row config (all optional):
 | `deepseekModel`  | `deepseek-v4-flash` | AI model name |
 | `botDecisionTimeoutMs` | `12000` | AI decision request timeout |
 
-Prefer the `DEEPSEEK_API_KEY` environment variable over `deepseekApiKey` so a
-secret is not written to a profile patch.
+Prefer the in-game memory-only setting for interactive local play, or the
+`DEEPSEEK_API_KEY` environment variable for unattended startup. Avoid
+`deepseekApiKey` because it writes the secret to a profile patch.
 
 ## Reset / data
 
@@ -245,9 +270,13 @@ the plugin is still designed only for a loopback-bound, trusted local DSH
 instance. Do not expose it through `0.0.0.0`, a LAN or the public internet
 without additional authentication, TLS, rate limiting and access controls.
 
+In-game AI credential configuration additionally requires both the browser and
+the requested host to be loopback. Remote clients do not receive the settings
+control, and the gateway rejects forged configuration messages. Any seated
+player can request AI seats after the local operator has configured a provider;
+each AI turn may consume paid provider tokens.
+
 Report vulnerabilities privately according to [SECURITY.md](./SECURITY.md).
-Keep AI credentials in `DEEPSEEK_API_KEY`; any seated player can request AI
-seats, and each AI turn may consume paid provider tokens.
 
 ## License
 

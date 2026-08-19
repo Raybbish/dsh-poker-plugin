@@ -155,6 +155,8 @@ export interface TableState {
     actionTimeoutMs: number;
     /** Result of the last finished hand, for post-hand display. */
     lastShowdown: ShowdownResult | null;
+    /** Durable tombstone: restart must finish refunds before removing this room. */
+    deleting?: boolean;
 }
 /** Server config for one table. */
 export interface TableConfig {

@@ -7,8 +7,10 @@ import { TableView } from "./TableView";
 import { LobbyView } from "./LobbyView";
 import { Spinner } from "./ui";
 import { translateError, tx } from "../i18n";
+import type { HarnessStandardProps } from "../agent-status";
+import { AiSettingsDialog } from "./AiSettingsDialog";
 
-export function PokerOverlay(): React.ReactElement | null {
+export function PokerOverlay(props: HarnessStandardProps = {}): React.ReactElement | null {
   const store = useStore();
   if (!store.open) return null;
   const t = store.table as TableViewData | null;
@@ -30,7 +32,8 @@ export function PokerOverlay(): React.ReactElement | null {
     "div",
     { className: "hp-root" },
     store.error !== null ? React.createElement("div", { className: "hp-toast" }, translateError(store.error, store.locale)) : null,
-    React.createElement(PokerHeader, null),
+    React.createElement(PokerHeader, props),
     React.createElement("div", { className: "hp-body" }, body),
+    React.createElement(AiSettingsDialog),
   );
 }

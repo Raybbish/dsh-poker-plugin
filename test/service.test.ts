@@ -59,6 +59,40 @@ test("service: join grants wallet, buy-in debits it, cash-out credits it back", 
   assert.equal(h.service.walletOf(joined.playerId), STARTING_WALLET);
 });
 
+test("service: deleting an active room cancels the hand, refunds every player's current chips, and removes persistence", async () => {
+  const h = makeService();
+  const { tableId, p1, p2 } = await setupTwoPlayers(h);
+  const before = h.service.getState(tableId)!;
+  assert.ok(before.hand !== null, "fixture has an active hand with posted blinds");
+  assert.equal(h.service.walletOf(p1.playerId), STARTING_WALLET - 1000);
+  assert.equal(h.service.walletOf(p2.playerId), STARTING_WALLET - 1000);
+
+  await h.service.deleteTable(tableId);
+
+  assert.equal(h.service.getState(tableId), undefined);
+  assert.equal(h.service.lobbyView().some((table) => table.tableId === tableId), false);
+  assert.equal(h.domain.tables.tables!.get(tableId), undefined);
+  assert.equal(h.service.walletOf(p1.playerId), STARTING_WALLET);
+  assert.equal(h.service.walletOf(p2.playerId), STARTING_WALLET);
+  assert.equal(h.ctx.pendingTimeoutCount, 0, "the deleted room's turn timer is cancelled");
+  await assert.rejects(h.service.deleteTable(tableId), (error: unknown) => (error as TableError).code === "table-not-found");
+});
+
+test("service: a deletion marked before a crash finishes idempotently during restart", async () => {
+  const h = makeService();
+  const table = await h.service.createTable("Crash delete", 2);
+  const joined = await h.service.joinTable(table.tableId, "Alice", 1000);
+  await h.domain.tables.tables!.update(table.tableId, (current) => ({ ...(current as object), deleting: true }));
+
+  const restored = new TableService(new FakeCtx() as never, h.domain as never, undefined, { now: () => h.clock.now() });
+  await restored.init();
+
+  assert.equal(restored.getState(table.tableId), undefined);
+  assert.equal(h.domain.tables.tables!.get(table.tableId), undefined);
+  assert.equal(restored.walletOf(joined.playerId), STARTING_WALLET);
+  assert.equal(restored.ledger.entriesFor(joined.playerId).filter((entry) => entry.reason === "cash-out").length, 1);
+});
+
 test("service: tables support up to 10 seats and reject an eleventh player", async () => {
   const h = makeService();
   const table = await h.service.createTable("Ten-handed", 10);

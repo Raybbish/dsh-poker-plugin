@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BotController, DeepSeekDecisionProvider, chooseBotAction, type BotDecisionProvider } from "../src/host/bot-controller.js";
+import { BotController, ConfigurableBotDecisionProvider, DeepSeekDecisionProvider, chooseBotAction, type BotDecisionProvider } from "../src/host/bot-controller.js";
 import { TableError, TableService } from "../src/host/table-service.js";
 import { MemoryDomain, FakeCtx } from "./helpers.js";
 import type { TableView } from "../src/protocol.js";
@@ -10,6 +10,22 @@ function makeService(): { service: TableService; ctx: FakeCtx } {
   const service = new TableService(ctx as never, new MemoryDomain() as never);
   return { service, ctx };
 }
+
+test("bot: runtime provider accepts a key without exposing or persisting it", async () => {
+  let receivedKey = "";
+  const runtime = new ConfigurableBotDecisionProvider((apiKey) => {
+    receivedKey = apiKey;
+    return { async decide() { return { action: "check" }; } };
+  });
+
+  assert.equal(runtime.configured, false);
+  await assert.rejects(runtime.decide({} as TableView), /not configured/);
+  runtime.configure("secret-runtime-key");
+  assert.equal(runtime.configured, true);
+  assert.equal(receivedKey, "secret-runtime-key");
+  assert.deepEqual(await runtime.decide({} as TableView), { action: "check" });
+  assert.doesNotMatch(JSON.stringify(runtime), /secret-runtime-key/);
+});
 
 test("bot: only a seated player can add a connected AI seat", async () => {
   const { service } = makeService();

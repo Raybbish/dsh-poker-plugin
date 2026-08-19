@@ -14,7 +14,7 @@ import { ClientMessage, clientMessageSchema, ServerMessage } from "../protocol.j
 import { TableError, TableService } from "./table-service.js";
 import { ActionType } from "../engine/types.js";
 import type {} from "./types-augment.js";
-import type { BotController } from "./bot-controller.js";
+import type { BotController, ConfigurableBotDecisionProvider } from "./bot-controller.js";
 
 interface ConnectionState {
   ws: WebSocket;
@@ -22,6 +22,7 @@ interface ConnectionState {
   token?: string;
   tableId?: string;
   alive: boolean;
+  canConfigureBots: boolean;
   /** Last wallet balance pushed to this socket (so updates are sent on change). */
   lastWallet?: number;
 }
@@ -48,6 +49,27 @@ export function isAllowedWebSocketOrigin(headers: IncomingHttpHeaders): boolean 
   }
 }
 
+function isLoopback(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  const address = value.toLowerCase();
+  return address === "::1" || address.startsWith("127.") || address.startsWith("::ffff:127.");
+}
+
+function isLoopbackHost(host: string | undefined): boolean {
+  if (host === undefined) return false;
+  try {
+    const hostname = new URL(`http://${host}`).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    return hostname === "localhost" || hostname === "::1" || hostname.startsWith("127.");
+  } catch {
+    return false;
+  }
+}
+
+/** Raw AI credentials are accepted only from a same-origin loopback browser. */
+export function isLocalBotConfigurationRequest(remoteAddress: string | undefined, headers: IncomingHttpHeaders): boolean {
+  return headers.origin !== undefined && isLoopback(remoteAddress) && isLoopbackHost(headers.host) && isAllowedWebSocketOrigin(headers);
+}
+
 export class PokerGateway {
   private readonly wss: WebSocketServer;
   private readonly connections = new Map<WebSocket, ConnectionState>();
@@ -55,7 +77,8 @@ export class PokerGateway {
   constructor(
     private readonly ctx: Context,
     private readonly service: TableService,
-    private readonly bots?: BotController,
+    private readonly bots: BotController,
+    private readonly botProvider: ConfigurableBotDecisionProvider,
   ) {
     this.wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
   }
@@ -69,7 +92,8 @@ export class PokerGateway {
           socket.destroy();
           return;
         }
-        this.wss.handleUpgrade(req, socket, head, (ws) => this.onSocket(ws));
+        const canConfigureBots = isLocalBotConfigurationRequest(req.socket.remoteAddress, req.headers);
+        this.wss.handleUpgrade(req, socket, head, (ws) => this.onSocket(ws, canConfigureBots));
       },
     });
     this.ctx.effect(() => disposeRoute);
@@ -110,8 +134,8 @@ export class PokerGateway {
     });
   }
 
-  private onSocket(ws: WebSocket): void {
-    const state: ConnectionState = { ws, alive: true };
+  private onSocket(ws: WebSocket, canConfigureBots: boolean): void {
+    const state: ConnectionState = { ws, alive: true, canConfigureBots };
     this.connections.set(ws, state);
     ws.on("pong", () => {
       state.alive = true;
@@ -126,6 +150,7 @@ export class PokerGateway {
       /* close handler owns cleanup */
     });
     this.send(ws, { type: "welcome", serverTime: Date.now() });
+    this.sendBotConfiguration(state);
     this.send(ws, { type: "lobby", tables: this.service.lobbyView() });
   }
 
@@ -182,8 +207,22 @@ export class PokerGateway {
         }
         case "addBot": {
           if (state.playerId === undefined || state.tableId !== msg.tableId) throw new TableError("join the table before adding a bot", "unauthorized");
-          if (this.bots === undefined) throw new TableError("AI bot is unavailable — configure a server-side API key and restart dsh web", "bot-unavailable");
+          if (!this.botProvider.configured) throw new TableError("AI bot is unavailable — configure an API key", "bot-unavailable");
           await this.bots.addBot(msg.tableId, state.playerId);
+          break;
+        }
+        case "configureBotApi": {
+          if (!state.canConfigureBots) throw new TableError("AI settings can only be changed from this computer", "unauthorized");
+          this.botProvider.configure(msg.apiKey);
+          this.ctx.logger.info("dsh-poker: AI bot provider configured from the local game UI (memory only).");
+          for (const connection of this.connections.values()) {
+            this.sendBotConfiguration(connection, connection === state ? msg.requestId : undefined);
+          }
+          break;
+        }
+        case "deleteTable": {
+          if (!state.canConfigureBots) throw new TableError("Rooms can only be deleted from this computer", "unauthorized");
+          await this.service.deleteTable(msg.tableId);
           break;
         }
         case "leaveTable": {
@@ -252,8 +291,20 @@ export class PokerGateway {
   }
 
   private onTableChanged(tableId: string): void {
+    const deleted = this.service.getState(tableId) === undefined;
     for (const state of this.connections.values()) {
       if (state.tableId === tableId) {
+        if (deleted) {
+          state.tableId = undefined;
+          this.send(state.ws, { type: "tableDeleted", tableId });
+          if (state.playerId !== undefined) {
+            const balance = this.service.walletOf(state.playerId);
+            state.lastWallet = balance;
+            this.send(state.ws, { type: "wallet", balance });
+          }
+          this.send(state.ws, { type: "lobby", tables: this.service.lobbyView() });
+          continue;
+        }
         // Seated player or spectator: both receive this table's snapshots;
         // only a seated player's view ever contains their own hole cards.
         this.send(state.ws, { type: "snapshot", table: this.service.snapshotFor(tableId, state.playerId ?? "") });
@@ -270,6 +321,15 @@ export class PokerGateway {
         this.send(state.ws, { type: "lobby", tables: this.service.lobbyView() });
       }
     }
+  }
+
+  private sendBotConfiguration(state: ConnectionState, requestId?: string): void {
+    this.send(state.ws, {
+      type: "botConfiguration",
+      ...(requestId === undefined ? {} : { requestId }),
+      configured: this.botProvider.configured,
+      configurable: state.canConfigureBots,
+    });
   }
 
   private send(ws: WebSocket, message: ServerMessage): void {

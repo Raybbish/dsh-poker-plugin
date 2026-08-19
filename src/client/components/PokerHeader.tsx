@@ -1,12 +1,15 @@
 /** Compact room bar: brand, table meta, room id, connection state, actions. */
 import * as React from "react";
 import type { TableView as TableViewData } from "../view-types";
-import { leaveTable, setLocale, stopWatching, Store, useStore } from "../store";
+import { leaveTable, openAiSettings, setLocale, stopWatching, Store, useStore } from "../store";
 import { tx } from "../i18n";
+import { useAgentRunning, type HarnessStandardProps } from "../agent-status";
+import { AgentStatusBadge } from "./AgentStatusBadge";
 
-export function PokerHeader(): React.ReactElement {
+export function PokerHeader(props: HarnessStandardProps): React.ReactElement {
   const store = useStore();
   const locale = store.locale;
+  const agentRunning = useAgentRunning(props);
   const t = store.table as TableViewData | null;
   const inTable = t !== null && store.session !== null && t.tableId === store.session.tableId;
   const watching = t !== null && !inTable && t.tableId === store.spectateTableId;
@@ -52,6 +55,18 @@ export function PokerHeader(): React.ReactElement {
         )
       : null,
     React.createElement("div", { className: "hp-spacer" }),
+    React.createElement(AgentStatusBadge, { running: agentRunning, locale }),
+    store.botConfigurable
+      ? React.createElement(
+          "button",
+          {
+            className: `hp-btn hp-ai-config${store.botConfigured === true ? " configured" : ""}`,
+            "data-testid": "open-ai-settings",
+            onClick: () => openAiSettings(),
+          },
+          tx(locale, store.botConfigured === true ? "aiConfigured" : "aiSettings"),
+        )
+      : null,
     !store.connected
       ? React.createElement("span", { className: "hp-conn" }, React.createElement("div", { className: "hp-dotpulse" }), tx(locale, "reconnecting"))
       : null,

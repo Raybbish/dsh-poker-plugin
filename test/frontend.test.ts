@@ -41,6 +41,7 @@ interface TestExports {
 }
 
 let __test: TestExports;
+let pluginApply: (ctx: Record<string, unknown>) => void;
 
 test.before(async () => {
   // The built artifact is exactly what the harness serves at
@@ -51,8 +52,9 @@ test.before(async () => {
   const mod = factory!((spec) => {
     if (spec === "react") return React;
     throw new Error(`unexpected require: ${spec}`);
-  }) as unknown as { __test: TestExports };
+  }) as unknown as { __test: TestExports; apply: (ctx: Record<string, unknown>) => void };
   __test = mod.__test;
+  pluginApply = mod.apply;
 });
 
 function render(node: unknown): string {
@@ -112,7 +114,24 @@ function fixtureTable(overrides: Record<string, unknown> = {}): Record<string, u
 }
 
 function setStore(patch: Record<string, unknown>): void {
-  __test.Store.set({ locale: "zh", open: false, connected: true, connecting: false, session: null, lobby: [], table: null, spectateTableId: null, wallet: 9000, error: null, ...patch });
+  __test.Store.set({
+    locale: "zh",
+    open: false,
+    connected: true,
+    connecting: false,
+    session: null,
+    lobby: [],
+    table: null,
+    spectateTableId: null,
+    wallet: 9000,
+    botConfigured: null,
+    botConfigurable: false,
+    botConfigurationRequestId: null,
+    aiSettingsOpen: false,
+    aiSettingsTableId: null,
+    error: null,
+    ...patch,
+  });
 }
 
 // ── lobby states ─────────────────────────────────────────────────────────────
@@ -149,6 +168,18 @@ test("lobby: table list renders rows with Join and Watch buttons", () => {
   assert.match(html, /已暂停/);
 });
 
+test("lobby: room deletion is available only to the local host and requires inline confirmation", () => {
+  const table = { tableId: "t1", name: "Friday", maxSeats: 6, playerCount: 2, status: "playing", smallBlind: 5, bigBlind: 10, buyIn: 1000, createdAt: 0 };
+  setStore({ lobby: [table], botConfigurable: true });
+  const localHtml = render(React.createElement(__test.LobbyView));
+  assert.match(localHtml, /data-testid="delete-t1"/);
+  assert.match(localHtml, /删除房间/);
+
+  setStore({ lobby: [table], botConfigurable: false });
+  const remoteHtml = render(React.createElement(__test.LobbyView));
+  assert.doesNotMatch(remoteHtml, /data-testid="delete-t1"/);
+});
+
 // ── overlay / error / reconnecting ───────────────────────────────────────────
 
 test("overlay: error toast is shown", () => {
@@ -183,6 +214,32 @@ test("table: my turn shows call/fold/all-in actions with amounts", () => {
   assert.match(html, /A/); // ace of hearts label
   const backCount = (html.match(/hp-card (?:small )?back/g) || []).length;
   assert.equal(backCount, 4, "two opponents × two card backs");
+});
+
+test("table: a legal raise exposes Min, half-pot, three-quarter-pot, Pot, Max, slider and direct entry", () => {
+  setStore({
+    open: true,
+    session: { playerId: "p3", token: "x", tableId: "t1", nickname: "Carol" },
+    table: fixtureTable({
+      pots: [{ amount: 120, eligiblePlayerIds: ["p1", "p2", "p3"] }],
+      toCall: 20,
+      myLegalActions: [
+        { type: "fold" },
+        { type: "call", amount: 10 },
+        { type: "raise", min: 40, max: 1000 },
+        { type: "allin" },
+      ],
+    }),
+  });
+
+  const html = render(React.createElement(__test.PokerOverlay));
+  assert.match(html, /data-raise-preset="min"/);
+  assert.match(html, /data-raise-preset="half-pot"/);
+  assert.match(html, /data-raise-preset="three-quarter-pot"/);
+  assert.match(html, /data-raise-preset="pot"/);
+  assert.match(html, /data-raise-preset="max"/);
+  assert.match(html, /data-testid="raise-slider"/);
+  assert.match(html, /data-testid="raise-input"/);
 });
 
 test("table: opponent bets and community cards render", () => {
@@ -257,6 +314,46 @@ test("table: AI-controlled seats carry an AI badge", () => {
   assert.match(html, /机器人<\/div>/);
 });
 
+test("table: acting bots have stable character identities and a thought line", () => {
+  const table = fixtureTable({
+    currentTurnSeat: 1,
+    seats: [
+      seat("p1", "AI Player", 950, { seat: 1, isBot: true, isTurn: true }),
+      seat("p2", "Human", 1000, { seat: 2, isMe: true, holeCards: [{ rank: 14, suit: 2 }, { rank: 10, suit: 1 }] }),
+    ],
+  });
+  setStore({ open: true, session: { playerId: "p2", token: "x", tableId: "t1", nickname: "Human" }, table });
+
+  const html = render(React.createElement(__test.PokerOverlay));
+  assert.match(html, /data-character="shark"/);
+  assert.match(html, /data-character-state="thinking"/);
+  assert.match(html, /class="hp-thought"/);
+  assert.match(html, /嗅到了软弱/);
+  assert.match(__test.CSS, /@keyframes hp-thought-in/);
+  assert.match(__test.CSS, /@keyframes hp-pot-pop/);
+  assert.match(__test.CSS, /@keyframes hp-chip-to-pot/);
+  assert.match(__test.CSS, /@keyframes hp-payout-rise/);
+});
+
+test("table: recent actions and winner payouts form a visible response sequence", () => {
+  const table = fixtureTable({
+    phase: "showdown",
+    seats: [
+      seat("p1", "AI Player", 1070, { seat: 1, isBot: true, bet: 40, lastAction: { type: "raise", amount: 30 } }),
+      seat("p2", "Human", 930, { seat: 2, isMe: true, holeCards: [{ rank: 14, suit: 2 }, { rank: 10, suit: 1 }] }),
+    ],
+    winners: [{ playerId: "p1", nickname: "AI Player", amount: 120, handLabel: "Pair" }],
+  });
+  setStore({ open: true, session: { playerId: "p2", token: "x", tableId: "t1", nickname: "Human" }, table });
+
+  const html = render(React.createElement(__test.PokerOverlay));
+  assert.match(html, /data-character-state="reacting"/);
+  assert.match(html, /class="hp-last-action"/);
+  assert.match(html, /加注 30/);
+  assert.match(html, /class="hp-win-payout"/);
+  assert.match(html, /\+120/);
+});
+
 test("table: another AI bot can be added while a hand is running", () => {
   setStore({ open: true, session: { playerId: "p2", token: "x", tableId: "t1", nickname: "Human" }, table: fixtureTable({ mySeat: 1 }) });
   const html = render(React.createElement(__test.PokerOverlay));
@@ -291,6 +388,69 @@ test("sidebar: entry shows label when wide and status dot reflects connection", 
   assert.match(wideHtml, /hp-statusdot on/);
   const railHtml = render(React.createElement(__test.PokerCenterButton, { wide: false }));
   assert.doesNotMatch(railHtml, /class="plabel"/);
+});
+
+test("sidebar: reflects the active Harness Agent thinking and idle states", () => {
+  setStore({ connected: true });
+  const thinking = <T,>(selector: (state: { current?: string; byId: Record<string, { running: boolean } | undefined> }) => T): T =>
+    selector({ current: "agent-1", byId: { "agent-1": { running: true } } });
+  const idle = <T,>(selector: (state: { current?: string; byId: Record<string, { running: boolean } | undefined> }) => T): T =>
+    selector({ current: "agent-1", byId: { "agent-1": { running: false } } });
+
+  const thinkingHtml = render(React.createElement(__test.PokerCenterButton, { wide: true, useSessions: thinking }));
+  assert.match(thinkingHtml, /data-agent-state="thinking"/);
+  assert.match(thinkingHtml, /Agent 思考中/);
+
+  const idleHtml = render(React.createElement(__test.PokerCenterButton, { wide: true, useSessions: idle }));
+  assert.match(idleHtml, /data-agent-state="idle"/);
+  assert.match(idleHtml, /Agent 空闲/);
+});
+
+test("plugin lifecycle registers styles and transport cleanup through context effects", () => {
+  const injected: string[] = [];
+  const effectLabels: string[] = [];
+  const cleanups: Array<() => void> = [];
+  const slots = {
+    inject(slot: string, register: () => (() => void) | void): void {
+      injected.push(slot);
+      register();
+    },
+    register(): () => void {
+      return () => {};
+    },
+  };
+  const ctx = {
+    get(name: string): unknown {
+      return name === "slots" ? slots : undefined;
+    },
+    effect(effect: () => (() => void) | void, label?: string): void {
+      if (label !== undefined) effectLabels.push(label);
+      const cleanup = effect();
+      if (cleanup !== undefined) cleanups.push(cleanup);
+    },
+  };
+
+  pluginApply(ctx);
+  assert.deepEqual(injected.sort(), ["shell.overlay", "sidebar.footer.action"]);
+  assert.deepEqual(effectLabels.sort(), ["dsh-poker: styles", "dsh-poker: transport"]);
+  assert.equal(cleanups.length, 2);
+  for (const cleanup of cleanups) cleanup();
+});
+
+test("AI settings: local users get a masked, non-persistent key dialog", () => {
+  setStore({
+    open: true,
+    botConfigured: false,
+    botConfigurable: true,
+    aiSettingsOpen: true,
+    aiSettingsTableId: null,
+  });
+  const html = render(React.createElement(__test.PokerOverlay));
+  assert.match(html, /data-testid="ai-key-input"/);
+  assert.match(html, /type="password"/);
+  assert.match(html, /仅保存在当前服务进程内存中/);
+  assert.match(html, /data-testid="save-ai-key"/);
+  assert.doesNotMatch(html, /value="sk-/);
 });
 
 // ── complete language modes ────────────────────────────────────────────────

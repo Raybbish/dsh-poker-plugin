@@ -1,8 +1,10 @@
 /** Fixed bottom action dock: Fold / Check-Call / Bet-Raise / All-in. */
 import * as React from "react";
 import type { LegalAction, TableView } from "../view-types";
-import { addBot, fmt, joinTable, playAction, stopWatching, useStore } from "../store";
+import { fmt, joinTable, playAction, requestAddBot, stopWatching, useStore } from "../store";
 import { displayNickname, tx } from "../i18n";
+import { normalizeRaiseTo, presetRaiseTo, type RaiseBounds } from "../raise-sizing";
+import { RaiseSizer } from "./RaiseSizer";
 
 export interface ActionDockProps {
   table: TableView;
@@ -16,8 +18,7 @@ export function ActionDock(props: ActionDockProps): React.ReactElement {
   const locale = useStore().locale;
   const mySeat = t.mySeat;
   const myTurn = mySeat !== null && mySeat === t.currentTurnSeat && props.connected;
-  const [selectedRatio, setSelectedRatio] = React.useState(1.25);
-  const [customAmount, setCustomAmount] = React.useState<number | null>(null);
+  const [raiseTo, setRaiseTo] = React.useState(0);
 
   const actions: LegalAction[] = props.spectating ? [] : t.myLegalActions ?? [];
   const callAction = actions.find((a) => a.type === "call");
@@ -32,18 +33,24 @@ export function ActionDock(props: ActionDockProps): React.ReactElement {
   const potTotal = t.pots.reduce((sum, pot) => sum + pot.amount, 0);
   const occupiedSeats = t.seats.filter((seat) => seat.playerId !== "").length;
   const full = occupiedSeats >= t.maxSeats;
-  const ratioAmount = (ratio: number): number => {
-    if (raiseBase === undefined) return 0;
-    const min = raiseBase.min ?? 1;
-    const max = raiseBase.max ?? min;
-    return Math.max(min, Math.min(max, Math.round(Math.max(potTotal, t.bigBlind) * ratio)));
-  };
-  const selectedAmount = (() => {
-    if (raiseBase === undefined) return 0;
-    const min = raiseBase.min ?? 1;
-    const max = raiseBase.max ?? min;
-    return Math.max(min, Math.min(max, Math.round(customAmount ?? ratioAmount(selectedRatio))));
-  })();
+  const raiseBounds: RaiseBounds | null = raiseBase === undefined
+    ? null
+    : {
+        min: raiseBase.min ?? 1,
+        max: raiseBase.max ?? raiseBase.min ?? 1,
+        pot: potTotal,
+        currentBet: t.toCall,
+        callAmount: callAction?.amount ?? 0,
+        step: 1,
+        raising: raiseAction !== undefined,
+      };
+  const selectedAmount = raiseBounds === null
+    ? 0
+    : normalizeRaiseTo(raiseTo > 0 ? raiseTo : presetRaiseTo("pot", raiseBounds), raiseBounds);
+
+  React.useEffect(() => {
+    if (raiseBounds !== null) setRaiseTo(presetRaiseTo("pot", raiseBounds));
+  }, [t.handNumber, t.phase, t.currentTurnSeat, t.toCall, raiseBase?.min, raiseBase?.max, potTotal]);
 
   const current = t.seats.find((s) => s.seat === t.currentTurnSeat);
   let hint: string;
@@ -80,7 +87,7 @@ export function ActionDock(props: ActionDockProps): React.ReactElement {
             "data-testid": "add-bot",
             className: "hp-action-btn bot primary-action",
             disabled: !props.connected || full,
-            onClick: () => addBot(t.tableId),
+            onClick: () => requestAddBot(t.tableId),
           },
           full ? tx(locale, "tableFull") : tx(locale, "addBot"),
         ),
@@ -91,43 +98,17 @@ export function ActionDock(props: ActionDockProps): React.ReactElement {
 
   return React.createElement(
     "div",
-    { className: "hp-dock" },
-    raiseBase !== undefined
-      ? React.createElement(
-          "div",
-          { className: "hp-bet-presets" },
-          [0.33, 0.5, 0.75, 1.25].map((ratio) =>
-            React.createElement(
-              "button",
-              {
-                key: ratio,
-                className: `hp-preset${customAmount === null && selectedRatio === ratio ? " selected" : ""}`,
-                disabled: !myTurn,
-                onClick: () => {
-                  setSelectedRatio(ratio);
-                  setCustomAmount(null);
-                },
-                title: `${fmt(ratioAmount(ratio))}`,
-              },
-              `${Math.round(ratio * 100)}%`,
-            ),
-          ),
-          React.createElement("input", {
-            className: "hp-preset-track",
-            type: "range",
-            min: raiseBase.min ?? 1,
-            max: raiseBase.max ?? raiseBase.min ?? 1,
-            step: 1,
-            value: selectedAmount,
-            disabled: !myTurn,
-            "aria-label": raiseAction !== undefined ? tx(locale, "raiseAmount") : tx(locale, "betAmount"),
-            onChange: (event) => setCustomAmount(Number(event.target.value)),
-          }),
-          React.createElement("span", { className: "hp-preset-value" }, fmt(selectedAmount)),
-          canAllIn
-            ? React.createElement("button", { className: "hp-preset allin", disabled: !myTurn, onClick: () => playAction("allin") }, tx(locale, "allIn"))
-            : null,
-        )
+    { className: `hp-dock${myTurn ? " is-my-turn" : " is-waiting"}${raiseBounds !== null ? " has-raise" : ""}` },
+    raiseBounds !== null
+      ? React.createElement(RaiseSizer, {
+          bounds: raiseBounds,
+          value: selectedAmount,
+          disabled: !myTurn,
+          canAllIn,
+          locale,
+          onChange: setRaiseTo,
+          onAllIn: () => playAction("allin"),
+        })
       : null,
     React.createElement(
       "div",
@@ -159,7 +140,7 @@ export function ActionDock(props: ActionDockProps): React.ReactElement {
           "data-testid": "add-bot-active",
           className: "hp-add-bot-inline",
           disabled: !props.connected || full,
-          onClick: () => addBot(t.tableId),
+          onClick: () => requestAddBot(t.tableId),
           title: full ? tx(locale, "tableFull") : tx(locale, "botNextHand"),
         },
         full ? tx(locale, "seatsFull", { occupied: occupiedSeats, max: t.maxSeats }) : tx(locale, "addBotCompact", { occupied: occupiedSeats, max: t.maxSeats }),

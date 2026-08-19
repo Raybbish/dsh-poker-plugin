@@ -21,6 +21,10 @@
     "./client": {
       "default": "./lib/client.js"
     },
+    "./engine": {
+      "types": "./lib/types/engine/index.d.ts",
+      "default": "./lib/engine/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -43,7 +47,7 @@
     "test": "npm run build && node --test \"dist-test/test/*.test.js\"",
     "test:only": "node --test \"dist-test/test/*.test.js\"",
     "test:install": "bash scripts/install-test.sh",
-    "test:ui": "node --test test/ui-layout.test.mjs"
+    "test:ui": "node --test test/ui-overlap.test.mjs && node --test test/ui-layout.test.mjs"
   },
   "license": "MIT",
   "dependencies": {

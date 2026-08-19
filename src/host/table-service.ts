@@ -10,6 +10,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { Context } from "@deepseek-ai/cordis";
 import { PokerEngine, EngineEvent } from "../engine/engine.js";
+import type { Rng } from "../engine/cards.js";
 import {
   ActionType,
   DEFAULT_TABLE_CONFIG,
@@ -77,6 +78,8 @@ const COMMAND_HISTORY_LIMIT = 256;
 export interface TableServiceOptions {
   /** Injectable clock (tests); defaults to Date.now. */
   now?: () => number;
+  /** Injectable server-side shuffle source for deterministic simulations. */
+  rng?: Rng;
 }
 
 export class TableService {
@@ -100,7 +103,7 @@ export class TableService {
   ) {
     this.config = resolveServiceConfig(config);
     this.now = options.now ?? Date.now;
-    this.engine = new PokerEngine({ now: this.now });
+    this.engine = new PokerEngine({ now: this.now, ...(options.rng === undefined ? {} : { rng: options.rng }) });
   }
 
   // ── lifecycle ─────────────────────────────────────────────────────────────
@@ -115,6 +118,10 @@ export class TableService {
       this.players.set(playerId, record);
     }
     for (const [tableId, state] of tableTable.entries()) {
+      if (state.deleting === true) {
+        await this.finalizeTableDeletion(state);
+        continue;
+      }
       for (const seat of state.seats) {
         if (seat !== null && seat !== undefined) {
           seat.connected = seat.isBot === true;
@@ -390,6 +397,22 @@ export class TableService {
     });
   }
 
+  /**
+   * Cancel and remove a room. Each seat receives exactly the chips it owns at
+   * this instant, including chips already committed to an unfinished hand.
+   * A persisted tombstone plus stable ledger ids makes crash recovery
+   * idempotent: restart completes missing refunds before deleting the record.
+   */
+  deleteTable(tableId: string): Promise<void> {
+    return this.enqueue(async () => {
+      const state = this.requireTable(tableId);
+      state.deleting = true;
+      await this.persistTable(state);
+      await this.finalizeTableDeletion(state);
+      this.emit(tableId);
+    });
+  }
+
   /** Apply one player action command with version fencing + commandId dedup. */
   action(
     playerId: string,
@@ -536,6 +559,34 @@ export class TableService {
     state.log.push({ at: this.now(), text: `${seat.nickname} left the table (cashed out ${amount}).` });
     await this.persistTable(state);
     this.emit(state.tableId);
+  }
+
+  private chipsOwnedAtCancellation(state: TableState, seat: Seat): number {
+    const handPlayer = state.hand?.players.find((player) => player.playerId === seat.playerId);
+    return handPlayer === undefined ? seat.stack : handPlayer.stack + handPlayer.committed + handPlayer.bet;
+  }
+
+  private async finalizeTableDeletion(state: TableState): Promise<void> {
+    const cancelTimer = this.turnTimers.get(state.tableId);
+    if (cancelTimer !== undefined) {
+      cancelTimer();
+      this.turnTimers.delete(state.tableId);
+    }
+    for (const seat of state.seats) {
+      if (seat === null || seat === undefined) continue;
+      const entry: LedgerEntry = {
+        transactionId: `delete-cashout-${state.tableId}-${seat.playerId}`,
+        playerId: seat.playerId,
+        tableId: state.tableId,
+        handId: null,
+        amount: this.chipsOwnedAtCancellation(state, seat),
+        reason: "cash-out",
+        createdAt: this.now(),
+      };
+      await this.recordLedger(entry);
+    }
+    await this.domain.table("tables").delete(state.tableId);
+    this.tables.delete(state.tableId);
   }
 
   /** Append one entry and WAIT for durability (crash-consistency: no entry is

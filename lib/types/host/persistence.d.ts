@@ -109,6 +109,7 @@ declare const tableStateSchema: z.ZodObject<{
         }, z.core.$strip>>;
         at: z.ZodNumber;
     }, z.core.$strip>>;
+    deleting: z.ZodOptional<z.ZodBoolean>;
 }, z.core.$strip>;
 export declare const pokerDomainSpec: {
     name: string;
@@ -211,6 +212,7 @@ export declare const pokerDomainSpec: {
                 }[];
                 at: number;
             } | null;
+            deleting?: boolean | undefined;
         }>;
         ledger: import("@deepseek-ai/dsh-storage-domain").DomainTableSpec<string, {
             transactionId: string;

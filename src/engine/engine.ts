@@ -189,11 +189,11 @@ export class PokerEngine {
     if (p.folded || p.allIn || p.excluded || hand.currentTurnSeat !== seat || p.stack === 0) return [];
     const maxTo = p.stack + p.bet;
     if (hand.toCall === 0) {
-      return [
-        { type: "check" },
-        { type: "bet", min: Math.max(state.bigBlind, 1), max: p.stack },
-        { type: "allin" },
-      ];
+      const actions: LegalAction[] = [{ type: "check" }];
+      const minBet = Math.max(state.bigBlind, 1);
+      if (p.stack >= minBet) actions.push({ type: "bet", min: minBet, max: p.stack });
+      actions.push({ type: "allin" });
+      return actions;
     }
     const need = hand.toCall - p.bet;
     const actions: LegalAction[] = need > 0 ? [{ type: "fold" }, { type: "call", amount: Math.min(need, p.stack) }] : [{ type: "check" }];

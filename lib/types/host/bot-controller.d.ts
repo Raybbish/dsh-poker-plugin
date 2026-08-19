@@ -8,6 +8,14 @@ export interface BotDecision {
 export interface BotDecisionProvider {
     decide(view: TableView): Promise<BotDecision>;
 }
+/** Hot-swappable, memory-only provider used by the local configuration flow. */
+export declare class ConfigurableBotDecisionProvider implements BotDecisionProvider {
+    #private;
+    constructor(createProvider: (apiKey: string) => BotDecisionProvider);
+    get configured(): boolean;
+    configure(apiKey: string): void;
+    decide(view: TableView): Promise<BotDecision>;
+}
 interface BotHttpResponse {
     ok: boolean;
     status: number;
@@ -28,7 +36,7 @@ export interface DeepSeekDecisionProviderOptions {
 }
 /** OpenAI-compatible DeepSeek adapter with strict JSON output and a hard timeout. */
 export declare class DeepSeekDecisionProvider implements BotDecisionProvider {
-    private readonly options;
+    #private;
     private readonly baseUrl;
     private readonly model;
     private readonly timeoutMs;

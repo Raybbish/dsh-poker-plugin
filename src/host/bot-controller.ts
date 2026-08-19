@@ -14,6 +14,29 @@ export interface BotDecisionProvider {
   decide(view: TableView): Promise<BotDecision>;
 }
 
+/** Hot-swappable, memory-only provider used by the local configuration flow. */
+export class ConfigurableBotDecisionProvider implements BotDecisionProvider {
+  #provider: BotDecisionProvider | undefined;
+  readonly #createProvider: (apiKey: string) => BotDecisionProvider;
+
+  constructor(createProvider: (apiKey: string) => BotDecisionProvider) {
+    this.#createProvider = createProvider;
+  }
+
+  get configured(): boolean {
+    return this.#provider !== undefined;
+  }
+
+  configure(apiKey: string): void {
+    this.#provider = this.#createProvider(apiKey);
+  }
+
+  async decide(view: TableView): Promise<BotDecision> {
+    if (this.#provider === undefined) throw new Error("AI provider is not configured");
+    return this.#provider.decide(view);
+  }
+}
+
 interface BotHttpResponse {
   ok: boolean;
   status: number;
@@ -49,13 +72,15 @@ function cardLabel(card: Card): string {
 
 /** OpenAI-compatible DeepSeek adapter with strict JSON output and a hard timeout. */
 export class DeepSeekDecisionProvider implements BotDecisionProvider {
+  readonly #apiKey: string;
   private readonly baseUrl: string;
   private readonly model: string;
   private readonly timeoutMs: number;
   private readonly fetcher: BotFetch;
 
-  constructor(private readonly options: DeepSeekDecisionProviderOptions) {
+  constructor(options: DeepSeekDecisionProviderOptions) {
     if (options.apiKey.trim() === "") throw new Error("DeepSeek API key is required");
+    this.#apiKey = options.apiKey.trim();
     this.baseUrl = (options.baseUrl ?? "https://api.deepseek.com").replace(/\/+$/, "");
     this.model = options.model ?? "deepseek-v4-flash";
     this.timeoutMs = options.timeoutMs ?? 12_000;
@@ -101,7 +126,7 @@ export class DeepSeekDecisionProvider implements BotDecisionProvider {
     };
     const response = await this.fetcher(`${this.baseUrl}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.options.apiKey}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.#apiKey}` },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(this.timeoutMs),
     });

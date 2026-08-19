@@ -29,6 +29,14 @@ export declare const clientMessageSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     requestId: z.ZodString;
     tableId: z.ZodString;
 }, z.core.$strip>, z.ZodObject<{
+    type: z.ZodLiteral<"configureBotApi">;
+    requestId: z.ZodString;
+    apiKey: z.ZodString;
+}, z.core.$strip>, z.ZodObject<{
+    type: z.ZodLiteral<"deleteTable">;
+    requestId: z.ZodString;
+    tableId: z.ZodString;
+}, z.core.$strip>, z.ZodObject<{
     type: z.ZodLiteral<"leaveTable">;
     requestId: z.ZodString;
     tableId: z.ZodString;
@@ -155,13 +163,24 @@ export interface ServerWallet {
     type: "wallet";
     balance: number;
 }
+export interface ServerBotConfiguration {
+    type: "botConfiguration";
+    requestId?: string;
+    configured: boolean;
+    /** True only for a same-origin browser connected over loopback. */
+    configurable: boolean;
+}
+export interface ServerTableDeleted {
+    type: "tableDeleted";
+    tableId: string;
+}
 export interface ServerError {
     type: "error";
     requestId?: string;
     code: string;
     message: string;
 }
-export type ServerMessage = ServerWelcome | ServerPong | ServerLobby | ServerJoined | ServerSnapshot | ServerWallet | ServerError;
+export type ServerMessage = ServerWelcome | ServerPong | ServerLobby | ServerJoined | ServerSnapshot | ServerWallet | ServerBotConfiguration | ServerTableDeleted | ServerError;
 export interface LobbySource {
     tableId: string;
     name: string;

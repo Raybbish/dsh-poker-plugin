@@ -1,5 +1,6 @@
 import { Context } from "@deepseek-ai/cordis";
 import { PokerEngine } from "../engine/engine.js";
+import type { Rng } from "../engine/cards.js";
 import { ActionType, TableState } from "../engine/types.js";
 import { Ledger, walletDelta } from "../ledger.js";
 import { LobbyTableView, TableView } from "../protocol.js";
@@ -36,6 +37,8 @@ export declare function resolveServiceConfig(raw: Partial<ServiceConfig> | undef
 export interface TableServiceOptions {
     /** Injectable clock (tests); defaults to Date.now. */
     now?: () => number;
+    /** Injectable server-side shuffle source for deterministic simulations. */
+    rng?: Rng;
 }
 export declare class TableService {
     private readonly ctx;
@@ -73,6 +76,13 @@ export declare class TableService {
     addBot(tableId: string, requestedByPlayerId: string, nickname?: string): Promise<JoinResult>;
     /** Fold (mid-hand) or immediately remove (no hand); cash out at hand end or now. */
     leaveTable(playerId: string, tableId: string): Promise<void>;
+    /**
+     * Cancel and remove a room. Each seat receives exactly the chips it owns at
+     * this instant, including chips already committed to an unfinished hand.
+     * A persisted tombstone plus stable ledger ids makes crash recovery
+     * idempotent: restart completes missing refunds before deleting the record.
+     */
+    deleteTable(tableId: string): Promise<void>;
     /** Apply one player action command with version fencing + commandId dedup. */
     action(playerId: string, tableId: string, commandId: string, expectedVersion: number, type: ActionType, amount?: number): Promise<{
         applied: boolean;
@@ -90,6 +100,8 @@ export declare class TableService {
     private grant;
     private debitBuyIn;
     private cashOutSeat;
+    private chipsOwnedAtCancellation;
+    private finalizeTableDeletion;
     /** Append one entry and WAIT for durability (crash-consistency: no entry is
      *  acknowledged before it is on disk). Idempotent on duplicate transactionId. */
     private recordLedger;

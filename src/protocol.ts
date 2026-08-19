@@ -38,6 +38,16 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
     tableId: z.string().min(1).max(64),
   }),
   z.object({
+    type: z.literal("configureBotApi"),
+    requestId: z.string().min(1).max(64),
+    apiKey: z.string().trim().min(8).max(512),
+  }),
+  z.object({
+    type: z.literal("deleteTable"),
+    requestId: z.string().min(1).max(64),
+    tableId: z.string().min(1).max(64),
+  }),
+  z.object({
     type: z.literal("leaveTable"),
     requestId: z.string().min(1).max(64),
     tableId: z.string().min(1).max(64),
@@ -172,6 +182,19 @@ export interface ServerWallet {
   balance: number;
 }
 
+export interface ServerBotConfiguration {
+  type: "botConfiguration";
+  requestId?: string;
+  configured: boolean;
+  /** True only for a same-origin browser connected over loopback. */
+  configurable: boolean;
+}
+
+export interface ServerTableDeleted {
+  type: "tableDeleted";
+  tableId: string;
+}
+
 export interface ServerError {
   type: "error";
   requestId?: string;
@@ -186,6 +209,8 @@ export type ServerMessage =
   | ServerJoined
   | ServerSnapshot
   | ServerWallet
+  | ServerBotConfiguration
+  | ServerTableDeleted
   | ServerError;
 
 // ── per-connection view building ────────────────────────────────────────────

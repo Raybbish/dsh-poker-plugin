@@ -11,7 +11,7 @@ import { z } from "zod";
 import { pokerDomainSpec } from "./persistence.js";
 import { TableService } from "./table-service.js";
 import { PokerGateway } from "./gateway.js";
-import { BotController, DeepSeekDecisionProvider } from "./bot-controller.js";
+import { BotController, ConfigurableBotDecisionProvider, DeepSeekDecisionProvider } from "./bot-controller.js";
 
 const configSchema = z.object({
   smallBlind: z.number().int().min(1).optional(),
@@ -41,29 +41,26 @@ export async function apply(ctx: Context, rawConfig?: unknown): Promise<void> {
   ctx.effect(() => service.dispose);
 
   const apiKey = config.deepseekApiKey ?? process.env.DEEPSEEK_API_KEY;
-  const bots =
-    apiKey === undefined
-      ? undefined
-      : new BotController(
-          service,
-          new DeepSeekDecisionProvider({
-            apiKey,
-            baseUrl: config.deepseekBaseUrl,
-            model: config.deepseekModel,
-            timeoutMs: config.botDecisionTimeoutMs,
-          }),
-          {
-            schedule: (callback, delayMs) => ctx.timer.timeout(callback, delayMs),
-            logger: ctx.logger,
-          },
-        );
-  bots?.start();
-  if (bots !== undefined) ctx.effect(() => () => bots.dispose());
+  const botProvider = new ConfigurableBotDecisionProvider((configuredKey) =>
+    new DeepSeekDecisionProvider({
+      apiKey: configuredKey,
+      baseUrl: config.deepseekBaseUrl,
+      model: config.deepseekModel,
+      timeoutMs: config.botDecisionTimeoutMs,
+    }),
+  );
+  if (apiKey !== undefined) botProvider.configure(apiKey);
+  const bots = new BotController(service, botProvider, {
+    schedule: (callback, delayMs) => ctx.timer.timeout(callback, delayMs),
+    logger: ctx.logger,
+  });
+  bots.start();
+  ctx.effect(() => () => bots.dispose());
 
-  const gateway = new PokerGateway(ctx, service, bots);
+  const gateway = new PokerGateway(ctx, service, bots, botProvider);
   gateway.start();
 
-  ctx.logger.info(`dsh-poker: game center ready (AI bots ${bots === undefined ? "disabled — configure a server-side API key" : "enabled"}).`);
+  ctx.logger.info(`dsh-poker: game center ready (AI bots ${botProvider.configured ? "enabled" : "awaiting local API key"}).`);
 }
 
 const plugin = { name, inject, apply };

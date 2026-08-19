@@ -27,6 +27,11 @@ export interface StoreShape {
   table: unknown;
   spectateTableId: string | null;
   wallet: number | null;
+  botConfigured: boolean | null;
+  botConfigurable: boolean;
+  botConfigurationRequestId: string | null;
+  aiSettingsOpen: boolean;
+  aiSettingsTableId: string | null;
   error: string | null;
   listeners: Set<() => void>;
   subscribe(fn: () => void): () => void;
@@ -48,6 +53,11 @@ export const Store: StoreShape = {
   table: null,
   spectateTableId: null,
   wallet: null,
+  botConfigured: null,
+  botConfigurable: false,
+  botConfigurationRequestId: null,
+  aiSettingsOpen: false,
+  aiSettingsTableId: null,
   error: null,
   listeners: new Set(),
   subscribe(this: StoreShape, fn: () => void) {
@@ -176,6 +186,30 @@ export function connect(): void {
   };
 }
 
+/** Release transport resources when the host unloads the plugin. */
+export function disposeStore(): void {
+  if (Store.retryTimer !== null) clearTimeout(Store.retryTimer);
+
+  const ws = Store.ws;
+  Store.retryTimer = null;
+  Store.ws = null;
+  Store.connecting = false;
+  Store.connected = false;
+  Store.retry = 0;
+  Store.listeners.clear();
+
+  if (ws === null) return;
+  ws.onopen = null;
+  ws.onmessage = null;
+  ws.onclose = null;
+  ws.onerror = null;
+  try {
+    ws.close();
+  } catch (e) {
+    /* already closed */
+  }
+}
+
 function scheduleReconnect(): void {
   if (Store.retryTimer !== null) return;
   Store.retryTimer = setTimeout(() => {
@@ -215,6 +249,23 @@ export function handleMessage(msg: any): void {
     case "wallet":
       Store.set({ wallet: msg.balance });
       return;
+    case "botConfiguration":
+      Store.set({
+        botConfigured: msg.configured === true,
+        botConfigurable: msg.configurable === true,
+        botConfigurationRequestId: typeof msg.requestId === "string" ? msg.requestId : null,
+      });
+      return;
+    case "tableDeleted": {
+      const removedSession = Store.session?.tableId === msg.tableId;
+      if (removedSession) writeSession(null);
+      Store.set({
+        session: removedSession ? null : Store.session,
+        table: (Store.table as any)?.tableId === msg.tableId ? null : Store.table,
+        spectateTableId: Store.spectateTableId === msg.tableId ? null : Store.spectateTableId,
+      });
+      return;
+    }
     case "error": {
       Store.set({ error: msg.message || msg.code });
       if (msg.code === "resume-failed") {
@@ -257,6 +308,36 @@ export function leaveTable(): void {
 
 export function addBot(tableId: string): void {
   send({ type: "addBot", requestId: rid(), tableId });
+}
+
+export function requestAddBot(tableId: string): void {
+  if (Store.botConfigured === true) {
+    addBot(tableId);
+    return;
+  }
+  if (Store.botConfigurable) {
+    Store.set({ aiSettingsOpen: true, aiSettingsTableId: tableId, error: null });
+    return;
+  }
+  addBot(tableId);
+}
+
+export function openAiSettings(tableId: string | null = null): void {
+  Store.set({ aiSettingsOpen: true, aiSettingsTableId: tableId, error: null });
+}
+
+export function closeAiSettings(): void {
+  Store.set({ aiSettingsOpen: false, aiSettingsTableId: null, botConfigurationRequestId: null });
+}
+
+/** The key is serialized directly to the socket and is never assigned to Store. */
+export function configureBotApi(apiKey: string): string | null {
+  const requestId = rid();
+  return send({ type: "configureBotApi", requestId, apiKey }) ? requestId : null;
+}
+
+export function deleteTable(tableId: string): void {
+  send({ type: "deleteTable", requestId: rid(), tableId });
 }
 
 export function watchTable(tableId: string): void {

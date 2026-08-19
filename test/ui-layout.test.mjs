@@ -62,6 +62,8 @@ class Bot {
     this.joined = false;
     this.playerId = null;
     this.table = null;
+    this.wallet = null;
+    this.deletedTableId = null;
     this.errors = [];
     this.ready = new Promise((resolve, reject) => {
       this.ws.on("open", resolve);
@@ -75,6 +77,8 @@ class Bot {
         this.playerId = m.playerId;
       }
       if (m.type === "snapshot") this.table = m.table;
+      if (m.type === "wallet") this.wallet = m.balance;
+      if (m.type === "tableDeleted") this.deletedTableId = m.tableId;
       if (m.type === "error") this.errors.push(m);
     });
   }
@@ -321,6 +325,63 @@ async function assertLayout(page, viewport, playerCount) {
   return m;
 }
 
+test("local AI key can be configured without being stored or exposed back to the page", { timeout: 120000 }, async () => {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await context.newPage();
+  const secret = `sk-ui-memory-only-${Date.now()}`;
+  try {
+    await openPoker(page);
+    const settings = page.getByTestId("open-ai-settings");
+    await settings.waitFor({ state: "visible" });
+    await settings.click();
+    const input = page.getByTestId("ai-key-input");
+    await input.waitFor({ state: "visible" });
+    assert.equal(await input.getAttribute("type"), "password");
+    await input.fill(secret);
+    await page.getByTestId("save-ai-key").click();
+    await page.getByText("AI 已配置", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByTestId("ai-key-input").count(), 0);
+
+    const exposure = await page.evaluate((key) => ({
+      html: document.documentElement.outerHTML.includes(key),
+      local: Object.values(localStorage).some((value) => value.includes(key)),
+      session: Object.values(sessionStorage).some((value) => value.includes(key)),
+      store: JSON.stringify(window.__hpStore ?? {}).includes(key),
+    }), secret);
+    assert.deepEqual(exposure, { html: false, local: false, session: false, store: false });
+  } finally {
+    await context.close();
+  }
+});
+
+test("local room deletion requires confirmation, refunds seats, and removes the lobby row", { timeout: 120000 }, async () => {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await context.newPage();
+  let bots = [];
+  try {
+    await openPoker(page);
+    const roomName = `UI-delete-${Date.now()}`;
+    const created = await createTableWithBots(roomName, 1);
+    bots = created.bots;
+    await waitFor(() => bots[0].wallet === 9000, "joined player wallet is debited");
+
+    const deleteButton = page.getByTestId(`delete-${created.tableId}`);
+    await deleteButton.waitFor({ state: "visible" });
+    await deleteButton.click();
+    assert.equal(await page.getByTestId(`delete-${created.tableId}`).count(), 0, "first click does not delete immediately");
+    const confirm = page.getByTestId(`confirm-delete-${created.tableId}`);
+    await confirm.waitFor({ state: "visible" });
+    await confirm.click();
+
+    await waitFor(() => bots[0].deletedTableId === created.tableId, "seated client receives tableDeleted");
+    await waitFor(() => bots[0].wallet === 10000, "seated player's chips are refunded");
+    await waitFor(async () => (await page.getByText(roomName, { exact: true }).count()) === 0, "deleted room leaves the lobby");
+  } finally {
+    bots.forEach((bot) => bot.close());
+    await context.close();
+  }
+});
+
 test("language switch changes the whole lobby and persists after reload", { timeout: 120000 }, async () => {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
@@ -343,7 +404,7 @@ test("language switch changes the whole lobby and persists after reload", { time
   }
 });
 
-test("primary bet button submits the displayed amount", { timeout: 120000 }, async () => {
+test("short desktop stays collision-free and mobile raise sheet submits an exact amount", { timeout: 120000 }, async () => {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
   const sentFrames = [];
@@ -358,30 +419,76 @@ test("primary bet button submits the displayed amount", { timeout: 120000 }, asy
     await joinViaUi(page, created.tableId, "You");
 
     // Heads-up: the first player is the small blind and acts first. A raise to
-    // 20 followed by the browser's call creates the exact 40-chip pot from the
-    // reported screenshot; the flop primary action then reads "下注 50".
+    // 20 followed by the browser's call creates a 40-chip pot. The new sizing
+    // model defaults to a pot-sized flop bet, then accepts an exact override.
     await playBotAction(bots[0], "raise", 20);
     const callButton = page.locator(".hp-action-btn.call:not([disabled])");
     await callButton.waitFor({ state: "visible" });
     assert.match((await callButton.textContent()) ?? "", /跟注 10/);
     await callButton.click();
 
-    const betButton = page.getByRole("button", { name: "下注 50", exact: true });
+    await waitFor(
+      async () => ((await page.locator(".hp-phase").textContent()) ?? "").trim() === "翻牌",
+      "the call advances the hand to the flop",
+      8_000,
+    );
+    const betButton = page.getByTestId("primary-bet");
     await betButton.waitFor({ state: "visible" });
-    assert.equal(((await betButton.textContent()) ?? "").trim(), "下注 50");
+    assert.equal(((await betButton.textContent()) ?? "").trim(), "下注 40");
+
+    await page.setViewportSize({ width: 1280, height: 600 });
+    await sleep(300);
+    const shortDesktopGeometry = await page.evaluate(() => {
+      const rect = (selector) => {
+        const value = document.querySelector(selector)?.getBoundingClientRect();
+        return value === undefined ? null : { left: value.left, top: value.top, right: value.right, bottom: value.bottom };
+      };
+      return { seat: rect(".hp-seat.me"), cards: rect(".hp-seat.me .hp-cards"), pot: rect(".hp-pot") };
+    });
+    assert.ok(shortDesktopGeometry.cards !== null && shortDesktopGeometry.pot !== null);
+    assert.ok(
+      shortDesktopGeometry.cards.right + 6 <= shortDesktopGeometry.pot.left ||
+        shortDesktopGeometry.pot.right + 6 <= shortDesktopGeometry.cards.left ||
+        shortDesktopGeometry.cards.bottom + 6 <= shortDesktopGeometry.pot.top ||
+        shortDesktopGeometry.pot.bottom + 6 <= shortDesktopGeometry.cards.top,
+      `short desktop cards overlap pot: ${JSON.stringify(shortDesktopGeometry)}`,
+    );
+    assert.ok(
+      shortDesktopGeometry.seat.right + 6 <= shortDesktopGeometry.pot.left ||
+        shortDesktopGeometry.pot.right + 6 <= shortDesktopGeometry.seat.left ||
+        shortDesktopGeometry.seat.bottom + 6 <= shortDesktopGeometry.pot.top ||
+        shortDesktopGeometry.pot.bottom + 6 <= shortDesktopGeometry.seat.top,
+      `short desktop seat overlaps pot: ${JSON.stringify(shortDesktopGeometry)}`,
+    );
+    await page.screenshot({ path: join(ARTIFACTS, "short-desktop-active.png") });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await sleep(300);
+    const sheet = page.locator(".hp-dock.is-my-turn.has-raise");
+    await sheet.waitFor({ state: "visible" });
+    assert.equal(await sheet.locator("[data-raise-preset]").count(), 5);
+    const sheetBox = await sheet.boundingBox();
+    assert.ok(sheetBox !== null && sheetBox.x >= 0 && sheetBox.x + sheetBox.width <= 390 && sheetBox.y + sheetBox.height <= 844);
+
+    const exactInput = page.getByTestId("raise-input");
+    await exactInput.fill("23");
+    await exactInput.press("Enter");
+    const exactBetButton = page.getByRole("button", { name: "下注 23", exact: true });
+    await exactBetButton.waitFor({ state: "visible" });
+    await page.screenshot({ path: join(ARTIFACTS, "mobile-raise-sheet.png") });
     sentFrames.length = 0;
-    await betButton.click();
+    await exactBetButton.click();
 
     await waitFor(
       () => sentFrames.some((payload) => {
         try {
           const message = JSON.parse(payload);
-          return message.type === "action" && message.action === "bet" && message.amount === 50;
+          return message.type === "action" && message.action === "bet" && message.amount === 23;
         } catch {
           return false;
         }
       }),
-      "clicking 下注 50 sends bet 50",
+      "clicking 下注 23 sends bet 23",
       2_000,
     );
   } finally {

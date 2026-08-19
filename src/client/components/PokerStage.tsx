@@ -13,6 +13,7 @@ import { CommunityCards, PotDisplay, WaitingState } from "./PokerTable";
 import { useCompact } from "./useCompact";
 import { useStore } from "../store";
 import { tx } from "../i18n";
+import { TableBets } from "./TableBets";
 
 function useElementSize<T extends HTMLElement>(): [React.RefObject<T>, { width: number; height: number }] {
   const ref = React.useRef<T | null>(null);
@@ -44,6 +45,7 @@ export function PokerStage(props: PokerStageProps): React.ReactElement {
   const viewerSeat = t.mySeat;
   const secondsLeft = t.actionDeadlineAt > 0 ? Math.max(0, Math.ceil((t.actionDeadlineAt - Date.now()) / 1000)) : null;
   const winnerIds = new Set(t.winners.map((w) => w.playerId));
+  const winAmounts = new Map(t.winners.map((winner) => [winner.playerId, winner.amount]));
 
   const positions = seatPositionsPx(occupied.map((s) => s.seat), viewerSeat, false, size.width, size.height);
   const bySeat = new Map<number, { left: number; top: number }>();
@@ -61,6 +63,8 @@ export function PokerStage(props: PokerStageProps): React.ReactElement {
       secondsLeft,
       deadlineMs: t.actionDeadlineAt,
       isWinner: winnerIds.has(s.playerId),
+      winAmount: winAmounts.get(s.playerId) ?? 0,
+      phase: t.phase,
       style: pos !== undefined && !compact ? { left: pos.left, top: pos.top } : undefined,
       className: compact ? (s.isMe ? undefined : "flow") : undefined,
     });
@@ -92,6 +96,14 @@ export function PokerStage(props: PokerStageProps): React.ReactElement {
       React.Fragment,
       null,
       felt,
+      React.createElement(TableBets, {
+        seats: occupied,
+        positions: bySeat,
+        stageWidth: size.width,
+        stageHeight: size.height,
+        handNumber: t.handNumber,
+        compact,
+      }),
       occupied.map(renderSeat),
     );
   }
@@ -107,7 +119,11 @@ export function PokerStage(props: PokerStageProps): React.ReactElement {
     } as Record<string, string>)[t.phase] ?? t.phase;
   return React.createElement(
     "div",
-    { className: "hp-stage", ref: stageRef as React.Ref<HTMLDivElement> },
+    {
+      className: `hp-stage${t.currentTurnSeat >= 0 ? " has-action" : ""}`,
+      ref: stageRef as React.Ref<HTMLDivElement>,
+      "data-focus-seat": t.currentTurnSeat >= 0 ? t.currentTurnSeat : undefined,
+    },
     React.createElement(
       "div",
       { className: "hp-statusline" },

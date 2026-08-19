@@ -1,7 +1,7 @@
 /** Lobby: wallet, create form, table list (join/watch), join-by-ID. */
 import * as React from "react";
 import type { LobbyTable } from "../view-types";
-import { createTable, joinTable, Store, useStore, watchTable } from "../store";
+import { createTable, deleteTable, joinTable, Store, useStore, watchTable } from "../store";
 import { translateError, tx } from "../i18n";
 
 export function LobbyView(): React.ReactElement {
@@ -12,6 +12,7 @@ export function LobbyView(): React.ReactElement {
   const [maxSeats, setMaxSeats] = React.useState("6");
   const [buyIn, setBuyIn] = React.useState("1000");
   const [joinId, setJoinId] = React.useState("");
+  const [deleteTarget, setDeleteTarget] = React.useState<string | null>(null);
   const tables = (store.lobby ?? []) as LobbyTable[];
   const walletText = store.wallet === null ? "…" : String(store.wallet).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
@@ -97,25 +98,64 @@ export function LobbyView(): React.ReactElement {
                   React.createElement("div", { className: "hp-tmeta" }, `${tx(locale, "room")}${locale === "zh" ? "：" : ": "}${t.tableId}`),
                 ),
                 React.createElement(
-                  "span",
-                  { className: `hp-badge ${t.status === "playing" ? "live" : "wait"}` },
-                  tx(locale, t.status === "playing" ? "playing" : t.status === "paused" ? "paused" : "waiting"),
+                  "div",
+                  { className: "hp-table-actions" },
+                  React.createElement(
+                    "span",
+                    { className: `hp-badge ${t.status === "playing" ? "live" : "wait"}` },
+                    tx(locale, t.status === "playing" ? "playing" : t.status === "paused" ? "paused" : "waiting"),
+                  ),
+                  deleteTarget === t.tableId
+                    ? React.createElement(
+                        React.Fragment,
+                        null,
+                        React.createElement("button", { className: "hp-btn", onClick: () => setDeleteTarget(null) }, tx(locale, "cancelDelete")),
+                        React.createElement(
+                          "button",
+                          {
+                            className: "hp-btn danger",
+                            "data-testid": `confirm-delete-${t.tableId}`,
+                            title: tx(locale, "deleteRoomWarning"),
+                            onClick: () => {
+                              setDeleteTarget(null);
+                              deleteTable(t.tableId);
+                            },
+                          },
+                          tx(locale, "confirmDelete"),
+                        ),
+                      )
+                    : React.createElement(
+                        React.Fragment,
+                        null,
+                        full
+                          ? React.createElement("button", { className: "hp-btn", disabled: !store.connected, onClick: () => watchTable(t.tableId) }, tx(locale, "watch"))
+                          : React.createElement(
+                              "button",
+                              {
+                                "data-testid": `join-${t.tableId}`,
+                                className: "hp-btn primary",
+                                disabled: !store.connected || nickname.trim() === "",
+                                onClick: () => {
+                                  Store.set({ nickname: nickname.trim() });
+                                  joinTable(t.tableId, nickname.trim() || (locale === "zh" ? "玩家" : "Player"), Number(buyIn) > 0 ? Number(buyIn) : t.buyIn);
+                                },
+                              },
+                              tx(locale, "join"),
+                            ),
+                        store.botConfigurable
+                          ? React.createElement(
+                              "button",
+                              {
+                                className: "hp-btn hp-delete-room",
+                                "data-testid": `delete-${t.tableId}`,
+                                title: tx(locale, "deleteRoomWarning"),
+                                onClick: () => setDeleteTarget(t.tableId),
+                              },
+                              tx(locale, "deleteRoom"),
+                            )
+                          : null,
+                      ),
                 ),
-                full
-                  ? React.createElement("button", { className: "hp-btn", disabled: !store.connected, onClick: () => watchTable(t.tableId) }, tx(locale, "watch"))
-                  : React.createElement(
-                      "button",
-                      {
-                        "data-testid": `join-${t.tableId}`,
-                        className: "hp-btn primary",
-                        disabled: !store.connected || nickname.trim() === "",
-                        onClick: () => {
-                          Store.set({ nickname: nickname.trim() });
-                          joinTable(t.tableId, nickname.trim() || (locale === "zh" ? "玩家" : "Player"), Number(buyIn) > 0 ? Number(buyIn) : t.buyIn);
-                        },
-                      },
-                      tx(locale, "join"),
-                    ),
               );
             }),
           ),

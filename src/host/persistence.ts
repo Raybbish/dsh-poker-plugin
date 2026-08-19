@@ -124,6 +124,7 @@ const tableStateSchema = z.object({
   appliedCommands: z.record(z.string(), z.array(z.string())),
   actionTimeoutMs: z.number().int(),
   lastShowdown: showdownResultSchema.nullable(),
+  deleting: z.boolean().optional(),
 });
 
 export const pokerDomainSpec = defineDomain({

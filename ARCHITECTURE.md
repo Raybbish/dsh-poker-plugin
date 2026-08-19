@@ -29,7 +29,7 @@ TypeScript compiled to ESM, mounted by one `cordis.patch.yml` row.
 
 | module | responsibility | DSH dependency |
 | --- | --- | --- |
-| `src/engine/*` | pure poker: cards, evaluator, state machine | none |
+| `src/engine/*` | pure poker: cards, evaluator, state machine; public `./engine` export | none |
 | `src/ledger.ts` | immutable Play Token ledger | zod |
 | `src/protocol.ts` | wire schemas + per-player view builders | zod |
 | `src/host/table-service.ts` | tables, wallets, commands, timers, persistence | `ctx.timer` |
@@ -40,11 +40,18 @@ TypeScript compiled to ESM, mounted by one `cordis.patch.yml` row.
 | `src/client/entry.ts`, `i18n.ts`, `store.ts`, `components/*`, `poker.css` | localized browser UI source | seed words `react` |
 
 Lifecycle: the plugin `apply()` opens the storage domain, boots the
-`TableService`, conditionally starts `BotController` when a server-side API key
-is configured, and starts the gateway. Every resource (domain handle, upgrade
-route, change subscription, heartbeat interval, sockets, turn timers and bot
+`TableService`, starts `BotController` behind a configurable decision-provider
+seam, and starts the gateway. An environment key configures that provider at
+boot; a same-origin loopback browser may replace it at runtime. UI-supplied
+credentials live only in the provider closure and are excluded from snapshots,
+storage, logs and the ledger. Every resource (domain handle, upgrade route,
+change subscription, heartbeat interval, sockets, turn timers and bot
 schedules) is registered through `ctx.effect` disposers and released on
 unmount.
+
+The browser half follows the same lifecycle contract through a two-method host
+surface (`get` + `effect`): CSS is installed only while mounted, and unmount
+cancels reconnect timers, detaches WebSocket callbacks and closes the socket.
 
 `scripts/build.mjs` bundles the client TS/TSX/CSS graph from
 `src/client/entry.ts` and wraps it as the distributed `lib/client.js`
@@ -101,6 +108,9 @@ idle ──(≥2 connected, incl. ≥1 human)──► preflop ──► flop �
 Security: the deck is shuffled with `node:crypto` randomBytes + rejection
 sampling (`CryptoRng`) — never `Math.random`. Hole cards and the deck exist
 only in `HandState` on the host.
+
+Production uses `CryptoRng`; tests and external simulators may inject
+`seededRng` through `PokerEngine` or `TableService` for reproducible runs.
 
 ## 5. Ledger (Play Tokens)
 
@@ -236,6 +246,11 @@ after each accepted command; writes are serialized per service.
   cash-out, restart recovery, conservation across joins/hands/leaves.
 - `test/full-game.test.ts` — seeded random multi-hand games (with rebuys) and
   a scripted raise/all-in/side-pot hand; global conservation asserted.
+- `test/simulation.test.ts` — 500 seeded, randomized 2–6 player hands; every
+  action checks legal progress, termination, chip conservation and per-viewer
+  card/token/deck privacy.
+- `test/package-exports.test.ts` — imports the packaged `dsh-poker/engine`
+  subpath and verifies its supported entry points.
 - `scripts/smoke-test.mjs` — end-to-end against a real `dsh web` over WS:
   lobby, join, play, privacy, stale version, resume, forged token, cash-out.
 
