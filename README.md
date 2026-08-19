@@ -143,7 +143,7 @@ For unattended startup, supply the key to the host as an environment variable:
 DEEPSEEK_API_KEY=sk-your-key npx @deepseek-ai/dsh web
 ```
 
-Create and join a table, then click **＋ 加入 AI 机器人**. The first bot starts
+Create and join a table, then click **＋ 加入机器人**. The first bot starts
 heads-up play immediately; additional bots can fill the remaining seats and
 join from the next hand. The current adapter uses a user-supplied DeepSeek API
 account and defaults to `deepseek-v4-flash`. Each bot turn makes one API

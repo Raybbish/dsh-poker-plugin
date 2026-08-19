@@ -141,6 +141,8 @@ Client → server (zod-validated on the host):
 | `createTable {name, maxSeats}` | new table |
 | `joinTable {tableId, nickname, buyIn, playerId?, token?}` | seat a player (reuse identity when token provided) |
 | `addBot {tableId}` | add one server-controlled AI seat (requires a seated human and configured provider) |
+| `configureBotApi {apiKey}` | replace the in-memory AI provider credential (same-origin loopback browser only) |
+| `deleteTable {tableId}` | cancel and durably remove a room (same-origin loopback browser only) |
 | `leaveTable {tableId}` | fold mid-hand / leave; cash out at hand end |
 | `action {commandId, playerId, tableId, expectedVersion, action, amount?}` | one poker action |
 | `resume {playerId, token, tableId}` | reconnect: reattach seat, restore snapshot |
@@ -148,19 +150,26 @@ Client → server (zod-validated on the host):
 | `ping` | heartbeat |
 
 Server → client: `welcome`, `lobby`, `joined` (identity issued once),
-`snapshot` (per-player view), `wallet` (pushed on change), `error`, `pong`.
+`snapshot` (per-player view), `wallet` (pushed on change), `botConfiguration`
+(boolean capability/status only), `tableDeleted`, `error`, `pong`.
 
 **Consistency**: accepted table mutations bump `table.version`. Poker `action`
 messages carry the version the client last saw; a mismatch is rejected with
 `stale-version` and the client re-syncs from the next pushed snapshot. Their
 `commandId` values are deduplicated per player (bounded history), so retrying
 an `action` after a dropped response never applies that action twice. Other
-mutating requests (`createTable`, `joinTable`, `addBot`, `leaveTable` and
-`resume`) use `requestId` for response correlation; they do not share the
-action command's version fence or deduplication history. All mutations are
-processed through a per-service serialized queue (mutation → durable write →
-broadcast), so two poker actions racing on the same version cannot both apply
-and chip math stays atomic.
+mutating requests (`createTable`, `joinTable`, `addBot`, `configureBotApi`,
+`deleteTable`, `leaveTable` and `resume`) use `requestId` for response
+correlation; they do not share the action command's version fence or
+deduplication history. All table mutations are processed through a per-service
+serialized queue (mutation → durable write → broadcast), so two poker actions
+racing on the same version cannot both apply and chip math stays atomic.
+
+**Local management boundary**: browser handshakes must be same-origin, and
+credential configuration / room deletion additionally require the socket peer
+and requested Host to be loopback. Remote and non-browser clients never gain
+these capabilities. Raw API keys travel once over the local socket into the
+provider closure; only `configured: boolean` is sent back to clients.
 
 **Privacy**: snapshots are built per connection by `buildTableView(state,
 viewerId, engine)` — the viewer's own hole cards are included, every other
@@ -201,6 +210,13 @@ table; all players start disconnected, turn timers are re-armed (already-past
 deadlines auto-act through the normal path). Records are replaced wholesale
 after each accepted command; writes are serialized per service.
 
+Room deletion is a recoverable transaction. The table is first persisted with
+`deleting: true`; every seat then receives a stable, idempotent
+`delete-cashout-{tableId}-{playerId}` ledger entry for its stack plus any chips
+committed to the cancelled hand. Finally the table record is removed. If the
+process stops between these steps, `init()` sees the tombstone and finishes
+the missing refunds and deletion before exposing the room in the lobby.
+
 ## 8. Disconnect / leave rules (tested)
 
 | situation | rule |
@@ -213,6 +229,8 @@ after each accepted command; writes are serialized per service.
 | leave between hands | seat freed immediately, stack cashed out |
 | leave mid-hand | player folded; committed chips stay in the pot; remaining stack cashed out when the hand ends |
 | hand ends while disconnected | seat freed and cashed out at hand end |
+| local operator deletes a room | cancel the hand, refund each seat's currently owned chips, remove the durable room, notify viewers with `tableDeleted` |
+| restart during room deletion | resume the tombstoned deletion idempotently; never expose the half-deleted room |
 | player broke (0 chips) | excluded from new hands; rebuy = leave + rejoin (same wallet) |
 | `dsh web` restart | tables restored; nobody is connected; hands resume per the timeout rules |
 
@@ -225,13 +243,15 @@ after each accepted command; writes are serialized per service.
   the mobile block never shrinks fonts below 11 px, reduced-motion disables
   all animations).
 - `test/ui-layout.test.mjs` — boots the real distributed plugin in a browser,
-  checks language persistence, action submission and seat containment, and
-  captures desktop, tablet and mobile screenshots.
+  checks memory-only AI configuration, confirmed room deletion/refunds,
+  language persistence, action submission and seat containment, and captures
+  desktop, tablet and mobile screenshots.
 - `test/bot.test.ts` — authorization for adding bots, multiple AI seats,
   provider request shape, legal-action clamping, safe fallbacks, pause status
   and abandoned-hand settlement.
-- `test/gateway.test.ts` — same-origin browser handshakes, cross-origin and
-  malformed-origin rejection, and non-browser client compatibility.
+- `test/gateway.test.ts` — same-origin browser handshakes, loopback-only local
+  management capability, cross-origin and malformed-origin rejection, command
+  schemas, and non-browser client compatibility.
 - `test/evaluator.test.ts` — table-driven ranking (royal flush → high card),
   ties, 7-card best-5, labels.
 - `test/engine.test.ts` — action order (3-handed, heads-up), illegal actions,
@@ -243,7 +263,8 @@ after each accepted command; writes are serialized per service.
   rebuild-from-persisted.
 - `test/service.test.ts` — version fencing, commandId dedup, snapshot privacy,
   disconnect/resume, timeout auto-fold via the timer path, mid-hand leave +
-  cash-out, restart recovery, conservation across joins/hands/leaves.
+  cash-out, recoverable room deletion/refunds, restart recovery, conservation
+  across joins/hands/leaves.
 - `test/full-game.test.ts` — seeded random multi-hand games (with rebuys) and
   a scripted raise/all-in/side-pot hand; global conservation asserted.
 - `test/simulation.test.ts` — 500 seeded, randomized 2–6 player hands; every
