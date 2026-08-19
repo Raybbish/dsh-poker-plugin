@@ -57,7 +57,52 @@ cancels reconnect timers, detaches WebSocket callbacks and closes the socket.
 `src/client/entry.ts` and wraps it as the distributed `lib/client.js`
 `__ModuleLoader__` module.
 
-## 3. Distribution (profile bundle)
+## 3. Adopted principles and deliberate differences
+
+Several structural lessons were informed by
+[`leeclouddragon/dsh-all-in`](https://github.com/leeclouddragon/dsh-all-in).
+They are applied at this project's own seams rather than copied literally:
+
+- **A clear product boundary, adapted rather than duplicated.** `dsh-all-in`
+  deliberately chooses local single-player, no network and no model calls.
+  This project instead promises loopback-only Play Token multiplayer with a
+  server-authoritative host, WebSocket transport and an optional operator-paid
+  AI adapter. Both avoid conversation writes and upstream DOM modification.
+  The extra host complexity exists because multiplayer authority, identity,
+  privacy and crash-safe accounting are part of this product's stated scope.
+- **A minimal DSH seam.** The client uses only `sidebar.footer.action` and
+  `shell.overlay`; styles, transport and registrations are owned through
+  `ctx.effect` cleanup. The host similarly registers its domain, gateway,
+  timers and bots through lifecycle disposers. No Harness DOM is patched.
+- **Rules, effects and UI point in one direction.** React UI calls the browser
+  store/WebSocket adapter; the gateway calls `TableService`; `TableService`
+  owns persistence and timers while delegating poker rules to the dependency-
+  free `PokerEngine`. The engine never imports React, storage, WebSocket or DSH.
+  This makes the engine a deep module: callers learn a small interface while
+  legality, betting rounds, runouts, pots and settlement remain inside.
+- **Complex rules have explicit data.** `acted`, `toCall`, `minRaise`,
+  `lastAggressorIdx`, `currentTurnSeat`, per-street `bet` and cumulative
+  `committed` make action rights and progress inspectable. They are this
+  engine's equivalents of `pendingActors`, `actedSinceFullRaise` and
+  `lastRaiseSize`; the names differ, but the rule is not hidden in UI branches.
+- **Randomness is injected at the rule seam.** Production uses `CryptoRng`;
+  tests pass `seededRng` through `PokerEngine` or `TableService`, so a failing
+  hand can be reproduced without weakening production shuffling.
+- **Tests assert invariants, not only examples.** The suite covers heads-up
+  blinds, short all-in raise rights, side pots and exact examples, then runs
+  500 seeded 2–6 player simulations that assert termination, legal progress,
+  chip conservation and per-viewer privacy after every action.
+- **The build is a release gate.** `scripts/build.mjs` produces host, client
+  and engine artifacts, parses the final client loader wrapper, and dynamically
+  imports host/engine outputs to verify their export contracts. `npm test`
+  additionally executes the real client bundle, while `npm run test:install`
+  packs, installs and boots it in a fresh profile.
+
+These choices preserve the reference project's strongest locality and
+testability lessons without discarding the server-authoritative, ledger and
+identity modules that make this project safer for multiplayer.
+
+## 4. Distribution (profile bundle)
 
 The package declares itself a **profile bundle** the same way the shipped
 `@deepseek-ai/dsh-base` and `@deepseek-ai/dsh-web-app` bundles do:
@@ -75,7 +120,7 @@ composed as a boot layer automatically. Users never edit `cordis.patch.yml`;
 tarball install → `--dump-config` asserts the poker row appears exactly once →
 boot a temporary `dsh web` → run the smoke test).
 
-## 4. Poker engine (state machine)
+## 5. Poker engine (state machine)
 
 `PokerEngine` operates on `TableState` and an explicit `HandState`:
 
@@ -112,7 +157,7 @@ only in `HandState` on the host.
 Production uses `CryptoRng`; tests and external simulators may inject
 `seededRng` through `PokerEngine` or `TableService` for reproducible runs.
 
-## 5. Ledger (Play Tokens)
+## 6. Ledger (Play Tokens)
 
 Every wallet-affecting change is one immutable entry:
 
@@ -131,7 +176,7 @@ Every wallet-affecting change is one immutable entry:
 - **Conservation**: `totalSystemChips() = Σ wallet deltas + Σ table escrow`
   is constant (grants are the only creation; everything else moves chips).
 
-## 6. Command protocol (WebSocket, `/poker/ws`)
+## 7. Command protocol (WebSocket, `/poker/ws`)
 
 Client → server (zod-validated on the host):
 
@@ -196,7 +241,7 @@ or for viewer `""` when spectating, so a spectator receives only public
 information (seats, stacks, community, log) and never any hole cards. The wire
 format is unchanged; `joinLobby` clears the subscription.
 
-## 7. Persistence
+## 8. Persistence
 
 `storage-domain` unit `poker` (JSON backend at `$DSH_HOME/storages/poker.json`):
 - table `tables`: one record per table — full state incl. seats, live hand
@@ -217,7 +262,7 @@ committed to the cancelled hand. Finally the table record is removed. If the
 process stops between these steps, `init()` sees the tombstone and finishes
 the missing refunds and deletion before exposing the room in the lobby.
 
-## 8. Disconnect / leave rules (tested)
+## 9. Disconnect / leave rules (tested)
 
 | situation | rule |
 | --- | --- |
@@ -234,7 +279,7 @@ the missing refunds and deletion before exposing the room in the lobby.
 | player broke (0 chips) | excluded from new hands; rebuy = leave + rejoin (same wallet) |
 | `dsh web` restart | tables restored; nobody is connected; hands resume per the timeout rules |
 
-## 9. Tests
+## 10. Tests
 
 - `test/frontend.test.ts` — renders the real browser bundle components with
   react-dom/server: loading / empty / reconnecting / spectating / error
@@ -275,7 +320,7 @@ the missing refunds and deletion before exposing the room in the lobby.
 - `scripts/smoke-test.mjs` — end-to-end against a real `dsh web` over WS:
   lobby, join, play, privacy, stale version, resume, forged token, cash-out.
 
-## 10. Known limitations
+## 11. Known limitations
 
 - **Single process / single host**: tables live in one `dsh web` process
   (persisted across restarts, but not clustered).
@@ -293,7 +338,7 @@ the missing refunds and deletion before exposing the room in the lobby.
   poker rule) — this is a *reveal*, not a leak; unrevealed hole cards are
   never sent early or to the wrong player.
 
-## 11. Reliability audit (TDD)
+## 12. Reliability audit (TDD)
 
 `test/audit.test.ts` was written fail-first against the shipped implementation;
 every finding below has a regression test that failed before the fix and
@@ -309,7 +354,7 @@ over a real WebSocket server (22 checks).
 | 5 | Disconnect → hand end → cash-out; duplicate leave/resume | verified | `audit: disconnected player is cashed out exactly once…` / `duplicate leaveTable…` / `duplicate resume…` | already correct — locked in by test |
 | 6 | Gateway authorization (unauthenticated action, cross-player action, forged join over the wire) | verified | smoke `unauthenticated action rejected` / `forged identity rejected by joinTable` | already correct — locked in by test |
 
-## 12. Next steps
+## 13. Next steps
 
 - Durable per-hand history + replay/HHV export; table deletion and admin;
   rebuy UI; sound; additional locales beyond Chinese/English; leaderboards

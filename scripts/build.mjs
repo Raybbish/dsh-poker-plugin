@@ -6,7 +6,7 @@
 import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -57,4 +57,20 @@ ${bundled}
 writeFileSync(join(root, "lib", "client.js"), wrapped);
 rmSync(join(root, "lib", "client.bundle.js"), { force: true });
 
-console.log("build: lib/ + dist-test/ + lib/client.js (esbuild bundle) written");
+// Validate the generated artifacts, not only their source/intermediate forms.
+// A malformed loader wrapper or accidental public-export regression must fail
+// the build before the package reaches a profile.
+new Function("window", wrapped);
+
+const cacheBust = `?build=${Date.now()}`;
+const host = await import(pathToFileURL(join(root, "lib", "host", "index.js")).href + cacheBust);
+if (host.name !== "dsh-poker" || !Array.isArray(host.inject) || typeof host.apply !== "function") {
+  throw new Error("build contract failed: host must export name, inject and apply");
+}
+
+const engine = await import(pathToFileURL(join(root, "lib", "engine", "index.js")).href + cacheBust);
+for (const name of ["PokerEngine", "seededRng", "evaluateBest"]) {
+  if (typeof engine[name] !== "function") throw new Error(`build contract failed: engine must export ${name}`);
+}
+
+console.log("build: host + client + engine artifacts written and export contracts verified");

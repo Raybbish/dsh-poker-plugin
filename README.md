@@ -10,6 +10,14 @@ network.
 > identity. No deposits, prizes, withdrawals, cash-out, or real-money wagering
 > are supported.
 
+The architecture adopts several lessons from
+[`leeclouddragon/dsh-all-in`](https://github.com/leeclouddragon/dsh-all-in)—a
+minimal DSH slot seam, pure and injectable game rules, explicit betting state,
+invariant-driven simulations and artifact-level build gates—while deliberately
+retaining this project's server-authoritative multiplayer, WebSocket, ledger,
+identity registry and optional AI-provider model. See
+[Architecture → Adopted principles and deliberate differences](./ARCHITECTURE.md#3-adopted-principles-and-deliberate-differences).
+
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ dsh web (127.0.0.1:3080)                                     │
@@ -198,11 +206,14 @@ src/
 cordis.patch.yml       ← the profile bundle patch (auto-inserts the poker row)
 test/       evaluator · engine · ledger · service · full-game · frontend · bot
             gateway · audit · simulation · package-exports · ui-layout
-scripts/    build.mjs · smoke-test.mjs (end-to-end) · install-test.sh
+scripts/    build.mjs (artifact contract gate) · smoke-test.mjs (end-to-end)
+            install-test.sh
 ```
 
 `scripts/build.mjs` bundles `src/client/entry.ts` and its TSX/CSS dependencies
-into the distributed `lib/client.js` `__ModuleLoader__` module.
+into the distributed `lib/client.js` `__ModuleLoader__` module. The build then
+parses that final wrapper and dynamically imports the host and engine artifacts
+to verify their public export contracts before succeeding.
 
 The dependency-free engine is also a public package subpath for bot policies,
 simulators and external tests:
